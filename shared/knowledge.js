@@ -97,45 +97,54 @@ export const FACTS = {
   projects: [
     {
       name: "FOSS Coin",
-      line: "A live Solana SPL token he built to fund open-source projects. It trades on Orca DEX with a real liquidity pool, and the tokenomics are verifiable on-chain via Solscan.",
-      link: "https://lingadevaru.in",
-      hasOwnUrl: false
+      line: "A live Solana SPL token he built to fund open-source projects. It trades on Orca DEX with a real liquidity pool, and the tokenomics are verifiable on-chain.",
+      links: [
+        { label: "Repo", url: "https://github.com/lingadevaru-hp/Foss-Token" },
+        { label: "Wiki", url: "https://lingadevaru.in/wiki/foss-coin" },
+        { label: "On-chain", url: "https://solscan.io/token/64AcKtFgExrtJWPJVr6U4iQrJ1VpiUvDHvRtdMHAcoin" }
+      ]
     },
     {
       name: "Thoshan Flash",
       line: "His own fine-tuned language model — Gemma-2-9B trained with QLoRA and PEFT. 4-bit quantization cut memory from 36GB to 12GB, and it pulled 26+ downloads in its first month, with a live Gradio demo.",
-      link: "https://huggingface.co/lingadevaruhp",
-      hasOwnUrl: true
+      links: [
+        { label: "Model", url: "https://huggingface.co/lingadevaruhp" }
+      ]
     },
     {
       name: "Decentralized Insurance Claim D-App",
-      line: "An Ethereum smart-contract system that automates insurance claim processing, with MetaMask handling wallet auth and transaction signing.",
-      link: "https://lingadevaru.in",
-      hasOwnUrl: false
+      line: "An Ethereum smart-contract system that automates insurance claim processing, with MetaMask handling wallet auth and transaction signing. Not published yet — code on request.",
+      links: [
+        { label: "Portfolio", url: "https://lingadevaru.in" }
+      ]
     },
     {
       name: "Voice Portfolio Assistant",
       line: "The chatbot you are talking to right now — speech-to-text, text-to-speech, and a hands-free voice call mode.",
-      link: "https://lingadevaru.in",
-      hasOwnUrl: false
+      links: [
+        { label: "Live", url: "https://lingadevaru.in" }
+      ]
     },
     {
       name: "Personal Wiki & Portfolio",
       line: "His own wiki and portfolio, self-hosted at lingadevaru.in.",
-      link: "https://lingadevaru.in",
-      hasOwnUrl: true
+      links: [
+        { label: "Site", url: "https://lingadevaru.in" }
+      ]
     },
     {
       name: "Homelab & Self-Hosting",
       line: "He runs his own homelab — self-hosting, DNS hardening and network security with Pi-hole and a VPN.",
-      link: "https://lingadevaru.in",
-      hasOwnUrl: false
+      links: [
+        { label: "Wiki", url: "https://lingadevaru.in/wiki" }
+      ]
     },
     {
       name: "LibreDevs",
       line: "A studio website he built to showcase client work.",
-      link: "https://lingadevaru.in",
-      hasOwnUrl: false
+      links: [
+        { label: "Site", url: "https://lingadevaru.in" }
+      ]
     }
   ]
 };
@@ -153,7 +162,8 @@ export const FACTS = {
    caching and multiplies the input bill.
    ---------------------------------------------------------------- */
 const projectList = FACTS.projects
-  .map((p, i) => `${i + 1}. ${p.name} — ${p.line} Link: ${p.link}`)
+  .map((p, i) =>
+    `${i + 1}. ${p.name} — ${p.line}\n   ${p.links.map((l) => `${l.label}: ${l.url}`).join("  ·  ")}`)
   .join("\n");
 
 export const SYSTEM_PROMPT = `You are the portfolio chatbot of Lingadevaru H P (Tumakuru, India). People also call him Thoshan — that is the name on this site, so "Thoshan" means him.
@@ -174,7 +184,7 @@ ABOUT HIM
 - Site: ${FACTS.links.site}
 - Contact: ${FACTS.contact} — the ONLY contact detail you ever give out.
 
-PROJECTS — 1-2 lines each. Give the link when there is one; otherwise point to his portfolio.
+PROJECTS — 1-2 lines each, then give the links exactly as listed. Never invent a URL.
 ${projectList}
 
 SKILLS: ${FACTS.skills.join(", ")}.
@@ -228,7 +238,7 @@ export const KB = [
   {
     keys: ["foss coin", "fosscoin", "solana", "spl", "token", "coin", "orca", "solscan"],
     thoughts: ["Question is about FOSS Coin.", "One line on what it is, one on the live proof."],
-    reply: "**FOSS Coin** is a live Solana SPL token he built to fund open-source projects 🚀 It trades on Orca DEX with a real liquidity pool, and the tokenomics are verifiable on Solscan. Details: lingadevaru.in"
+    reply: "**FOSS Coin** is a live Solana SPL token he built to fund open-source projects 🚀 It trades on Orca DEX with a real liquidity pool. Code: [github.com/lingadevaru-hp/Foss-Token](https://github.com/lingadevaru-hp/Foss-Token) · on-chain: [Solscan](https://solscan.io/token/64AcKtFgExrtJWPJVr6U4iQrJ1VpiUvDHvRtdMHAcoin)"
   },
   {
     keys: ["llm", "model", "thoshan flash", "fine tune", "finetune", "fine-tuning", "gemma", "qlora", "peft", "huggingface"],
