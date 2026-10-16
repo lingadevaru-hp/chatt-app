@@ -410,3 +410,31 @@ voice energy, to show the mic is live.
 
 There is no server to transcribe with, so `canRecord()` returns false and the
 mic says so rather than opening a recorder that would fail.
+
+### Malformed links in model output (1.12.1)
+
+The live projects answer came back with this:
+
+```
+On-chain: [https://solscan.io/token/64AcK…coin
+-](https://solscan.io/token/64AcK…coin
+-)
+```
+
+The model slid the list break **inside** the markdown link, so the href contained
+a newline. `richInline()`'s href pattern requires a whitespace-free URL, so the
+link never matched and the reply rendered literal `[`, `]`, `(` plus a dead href.
+
+Fixed at both ends:
+
+1. **The prompt asks for BARE URLs**, not `[text](url)`. `richInline()` already
+   linkifies bare URLs, so there is no link syntax to mangle. The project list is
+   also one line each now — the old hanging-indent layout invited the re-wrapping.
+2. **`formatReply()` repairs the construct anyway** if a model slips. It has to
+   run on the RAW text **before** line splitting: `richInline()` runs per line, so
+   once the construct spans two lines neither half is recognisable. The stray `-`
+   is restored as a real newline so it survives as a bullet — collapsing the
+   whitespace instead would glue it onto the URL and corrupt the address.
+
+Verified against the exact broken string: 0 literal brackets, 0 dead hrefs, the
+URL linkified, and the bullet rendered as `<ul><li>`.
