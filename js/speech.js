@@ -188,10 +188,8 @@ import { apiSpeak } from "./brain.js";
     stopBtn.hidden = true;
     Array.from(wave.children).forEach((b) => { b.style.height = "14%"; b.style.opacity = ".85"; });
 
-    /* the capture is over — withdraw the mic until the next prompt */
-    voiceUsed = true;
-    updateMicState();
-
+    /* Stop the recogniser FIRST so the transcript is settled before we judge
+       whether anything was captured. */
     if (recognition) { try { recognition.stop(); } catch (e) {} recognition = null; }
 
     if (auto) showToast("Stopped at " + CONFIG.maxRecordSeconds + " seconds");
@@ -200,11 +198,19 @@ import { apiSpeak } from "./brain.js";
        on the visitor's behalf (see CONFIG.autoSendVoice). Focus so they can
        edit straight away; Send/Enter is their call. */
     input.focus({ preventScroll: true });
+
+    const text = input.value.trim();
+
+    /* Withdraw the mic ONLY when something was actually captured. If nothing
+       was heard there is no spoken turn to protect — and the toast below says
+       "try again", which would be impossible with the mic already gone. */
+    voiceUsed = !!text;
+    updateMicState();
+
     if (!CONFIG.autoSendVoice) {
-      if (!input.value.trim()) showToast("Didn't catch that — try again");
+      if (!text) showToast("Didn't catch that — try again");
       return;
     }
-    const text = input.value.trim();
     if (text) setTimeout(() => { if (!speechDeps.getBusy()) speechDeps.onSubmit(); }, auto ? 250 : 120);
     else showToast("Didn't catch that — try again");
   }
