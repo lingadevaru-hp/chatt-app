@@ -16,11 +16,17 @@ export const CONFIG = {
        Never put a key in this file — everything here is public. */
     apiBase: "/api",
 
-    /* Model / voice names passed through to the proxy. The frontend does
-       not care which provider sits behind it. */
-    chatModel: "sarvam-105b-conversations",
-    ttsModel: "bulbul:v3",
-    ttsVoice: "anushka",
+    /* Model and voice are NOT set here on purpose.
+
+       They used to be, and it caused two problems: the frontend always
+       sent them, so the Worker's CHAT_MODEL / TTS_MODEL / TTS_VOICE env
+       vars silently did nothing — and the default voice here was
+       "anushka", which is bulbul:v2-only, so every v3 request was
+       coerced server-side and logged a warning.
+
+       The Worker now owns model selection (see api/wrangler.toml). To
+       change the model or voice, edit those vars and `wrangler deploy`
+       — no frontend rebuild needed. */
 
     maxRecordSeconds: 30,   // hard stop for one voice recording
     historyWindow: 6,       // previous messages sent as context. Six turns is

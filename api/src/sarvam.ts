@@ -44,15 +44,17 @@ export function resolveVoice(model: string, voice: string): { speaker: string; c
   return { speaker: fallback, coerced: true };
 }
 
-/** System prompt, portfolio facts only — every token bills every turn.
-    ~55 words (~75 tokens). Replies are spoken: the <60-word instruction
-    keeps answers short, cheap, and listenable. */
-export const SYSTEM_PROMPT =
-  "You are Thoshan's portfolio assistant. Thoshan: college student and " +
-  "developer in India. Stack: JavaScript/TypeScript, Python; React, " +
-  "Node/Express, REST, websockets; speech-to-text, TTS, LLMs. Open to " +
-  "freelance, internships, collaborations. Contact: email in the site's " +
-  "Settings. Answer in under 60 words, plain markdown. Never invent facts.";
+/* The system prompt lives in shared/knowledge.js — the single source of
+   truth, shared with the frontend's demo KB so the two cannot drift apart.
+   api/test/knowledge.test.ts fails the build if they disagree, or if any
+   private detail (phone, college, grades, graduation years) leaks in.
+
+   It MUST stay byte-identical between requests. Anything dynamic — a
+   timestamp, the visitor's name, shuffled facts — breaks provider prompt
+   caching and multiplies the input bill. Compose it from FACTS, never
+   interpolate per-request values into it. */
+import { SYSTEM_PROMPT } from "../../shared/knowledge.js";
+export { SYSTEM_PROMPT };
 
 export interface ChatResult {
   reply: string;

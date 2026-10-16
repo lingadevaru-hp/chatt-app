@@ -252,3 +252,55 @@ are live at `GET /health` (`cache.answers`, `cache.tts`); unit tests pin
 
 Expected total: **₹0–40/month** (was ₹0–80), usually under ₹5. The remaining
 variance is entirely "how many visitors tap read-aloud".
+
+## 13 · KNOWLEDGE — THE SINGLE SOURCE OF TRUTH
+
+All public facts live in **`shared/knowledge.js`**. Nothing else defines them.
+
+```
+shared/knowledge.js
+  ├─ FACTS           structured public facts — the only place facts are written
+  ├─ SYSTEM_PROMPT   composed from FACTS — what the live model reads every turn
+  ├─ KB              demo-mode answers: same facts, same voice
+  ├─ FALLBACK        what demo mode says when nothing matches
+  └─ PROFILE         what the UI shows
+```
+
+Both sides import it:
+
+```
+api/src/sarvam.ts   import { SYSTEM_PROMPT } from "../../shared/knowledge.js";
+js/knowledge.js     export { KB, FALLBACK, PROFILE, FACTS } from "../shared/knowledge.js";
+```
+
+**Why it is one file.** The facts used to live in two places and drifted apart:
+the live system prompt named zero projects while demo mode named three that did
+not exist. Editing facts in one file makes that structurally impossible.
+
+**The guard test.** `api/test/knowledge.test.ts` fails the build if:
+
+- the prompt and the KB disagree about a project
+- any private string appears (phone, college, grades, graduation years)
+- the prompt loses its privacy, scope, short-reply or voice rules
+- the KB stops routing a common question, or loses its refusal entry
+
+Run it with `cd api && npm test`.
+
+**Private data must never enter `shared/`.** The forbidden list lives in the
+test, not in the shared file — if it lived there it would be bundled into the
+browser, shipping the very data it exists to protect. Verified: neither the
+Worker bundle nor the frontend bundle contains the phone number, college names
+or CGPA.
+
+**Byte-identical rule.** `SYSTEM_PROMPT` must be identical on every request.
+Anything dynamic inside it — a timestamp, the visitor's name, shuffled facts —
+breaks provider prompt caching and multiplies the input bill. Compose it from
+`FACTS`; never interpolate per-request values into it.
+
+**Model and voice are chosen by the Worker, not the frontend** — `CHAT_MODEL`,
+`TTS_MODEL` and `TTS_VOICE` in `api/wrangler.toml`. The frontend no longer sends
+them, so a stale name there cannot fight the model the Worker picks. To change
+the model or voice: edit those vars and `wrangler deploy`, no frontend rebuild.
+
+**Adding a project** means three edits in one file: add it to `FACTS.projects`
+with a `link`, and give it a KB entry. The test checks the two agree.
