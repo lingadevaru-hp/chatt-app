@@ -557,3 +557,106 @@ The language rule is now explicit: **23 Indian languages**, replies written in
 **their own script** rather than romanised, and natural Kannada sprinkled into
 the English — *guru*, *macha*, *swapla*, *beku*, *illa*, *chennagide*,
 *hogi banni*.
+
+## 19 · VOICE MODEL CHOICE — v3 vs v4-flash (1.14.1)
+
+`bulbul:v4-flash` is the newer, cheaper, faster tier: **<250 ms to first audio
+(vs v3), ~40% faster, ₹20 vs ₹30 per 10k characters**, same request contract.
+For a voice agent that is a real win, and it is a one-line change — `TTS_MODEL`
+and `TTS_VOICE` in `api/wrangler.toml`, then `npm run deploy`.
+
+**It is not an obvious switch here, for two reasons.**
+
+### 1. Kannada coverage on v4 is thin
+
+Sarvam's own guide says the Kannada roster on v4-flash is **3 voices** and to
+"audition carefully". This bot's whole personality is its Kannada-English mix,
+so the Kannada voice quality is the product, not a detail. The cost saving at
+this traffic is a few paise a month — the latency is the only real argument.
+
+So do not switch on the price table. **Listen first:**
+
+```
+export SARVAM_API_KEY=...        # or: set -a && . ./.env && set +a
+python3 scripts/tts-ab.py        # writes /tmp/tts-ab/*.wav, then play them
+```
+
+That renders the same Kanglish line through v3's current voice and the four
+v4-flash candidates, so the decision is made with ears rather than reasoning.
+
+### 2. The trap: v3 and v4 speakers are not interchangeable
+
+v3 takes **short names** (`shubh`, `priya`). v4-flash takes **persona IDs**
+(`shubh_enhi_ads`, `chaitra_kn_conversation`). Mixing them returns **400 in
+both directions**. `resolveVoice()` in `api/src/sarvam.ts` already enforces
+this per model, so a wrong pair is coerced rather than failing — but check
+`X-Voice-Coerced` on the response if a voice sounds like the wrong one.
+
+## 20 · A LANGUAGE CAVEAT WORTH KNOWING (1.14.1)
+
+The prompt tells the bot it speaks **23 Indian languages**. That is true of the
+**text** — the model writes them. It is **not** true of the **voice**: Bulbul
+supports **11** codes (`en-IN, hi-IN, bn-IN, gu-IN, kn-IN, ml-IN, mr-IN, od-IN,
+pa-IN, ta-IN, te-IN`), which is exactly the list in `api/src/schema.ts`.
+
+So a visitor who writes in Urdu or Assamese gets a correct reply in that script
+— but the speaker button will render it with whatever `language_code` the
+picker holds, because `/tts` takes the language from the client and the reply's
+own language is never detected.
+
+For this bot that is a corner: visitors write English or Kannada, both covered.
+Worth fixing properly if the other languages start showing up — the fix is to
+detect the reply's script and send that as `lang`, rather than the picker value.
+
+## 21 · LATENCY AND COST (1.15.0)
+
+Two complaints, one root: **every reply waited for the whole thing to be
+synthesised before a single word played**, and every call made three sequential
+round trips (STT → chat → TTS).
+
+### Sentence-chunked playback
+
+`speechChunks()` splits a reply into ~170-character chunks on sentence
+boundaries, and `playChunks()` fires **all** of them at once through ONE
+`<audio>` element. The first chunk is all we wait for; the rest resolve while it
+plays.
+
+Measured on a real 366-character reply: **4 chunks, the first 43 characters —
+12% of the previous wait.** The speaker button and call mode both use it, so a
+call starts talking after one short sentence instead of after the entire answer.
+
+One element, not N. N elements left N live media sessions, which is what put a
+stuck "Playing" bar on screen.
+
+### Silence is no longer uploaded
+
+The level meter used to run **only** when `stopOnSilence` was set — so the
+composer mic could never tell speech from silence. It now always runs, and a
+clip with no detected speech is never sent to STT.
+
+This was two bugs in one:
+
+- **Cost.** In call mode the listen loop cycles every couple of seconds, so it
+  was paying ₹30/hour for silence, repeatedly.
+- **The dead second turn.** The same loop kept ending its own recording after
+  1.6 s of quiet, before the visitor finished a sentence. Silence is now
+  skipped, the trailing-silence threshold is **1000 ms** (down from 1600), and
+  an empty turn pauses 300 ms before reopening the mic so the loop cannot spin.
+
+### Releasing the media session
+
+`stopSpeaking()` paused the audio but never cleared `src`, so the browser still
+believed it was a live media session — which is why a "Playing" bar stayed on
+screen long after a reply finished. It now clears `src` and reloads.
+
+### Where the money actually goes
+
+| Service | Rate | Typical call |
+|---|---|---|
+| TTS (Bulbul v4-flash) | ₹20 / 10k chars | ~200 chars = **₹0.40** |
+| Chat (105B) | ₹15 / ₹5 cached / ₹60 per 1M | ~1,900 in + 150 out ≈ ₹0.04 |
+| STT (Saaras v4) | ₹30 / hour | 5 s ≈ ₹0.04 |
+
+**TTS is roughly 10× everything else combined.** So the levers, in order:
+shorter spoken replies (the persona already says 1-3 sentences), never paying
+for silence (done), and the answer cache for repeats (already seeded).
