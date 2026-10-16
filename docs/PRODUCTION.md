@@ -366,3 +366,47 @@ KB instead of the model.
 - `npm run deploy` runs that check, then `wrangler deploy`.
 
 Always deploy with `npm run deploy`, never bare `wrangler deploy`.
+
+## 14 · SPEECH-TO-TEXT (1.12.0)
+
+The mic used to be the browser's Web Speech API. It is now **Sarvam Saaras,
+through our own Worker** — the same key as chat and TTS.
+
+**Why it moved.** The browser API only really works in Chrome, it hands the
+audio to Google, and it is not the API the owner pays for. `MediaRecorder`
+works in every browser and the audio goes Worker → Sarvam, nowhere else.
+
+```
+js/speech.js  recordToBlob()  →  POST /stt  →  api/src/sarvam.ts sarvamStt()
+                                                   → api.sarvam.ai/speech-to-text
+```
+
+`recordToBlob()` is the ONE place this app touches the microphone, shared by
+the composer mic and by call mode (`js/call.js`), so the audio path exists once.
+
+### The 30-second cap is load-bearing
+
+Sarvam's REST endpoint **rejects audio longer than 30 seconds with a 422**.
+`CONFIG.maxRecordSeconds` (30) and call mode's `maxSeconds` (25) both sit
+under it deliberately. Raising one without the other produces a 422 the
+visitor reads as a failure.
+
+### Honest tradeoff: batch, not streaming
+
+The browser API returned text **while you spoke**. Sarvam's REST endpoint is
+**batch** — one round trip after the recording stops, so the text appears when
+you stop. Live-as-you-speak needs the Realtime WebSocket API, which is a much
+larger change (a WebSocket proxy in the Worker).
+
+### Call mode has no Stop button
+
+So `recordToBlob({ stopOnSilence: true })` ends the clip itself after ~1.6s of
+quiet, measured with an `AnalyserNode` energy check. It is deliberately
+forgiving so a pause mid-sentence does not cut the visitor off. Batch STT
+gives no interim words, so the call screen shows a small "…" whenever there is
+voice energy, to show the mic is live.
+
+### Demo mode has no mic
+
+There is no server to transcribe with, so `canRecord()` returns false and the
+mic says so rather than opening a recorder that would fail.
