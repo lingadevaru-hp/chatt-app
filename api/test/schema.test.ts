@@ -16,8 +16,17 @@ describe("chatBody", () => {
     const files = Array.from({ length: 5 }, (_, i) => ({ name: `f${i}.txt` }));
     expect(chatBody.safeParse({ message: "hi", files }).success).toBe(false);
   });
-  it("rejects unknown models", () => {
-    expect(chatBody.safeParse({ message: "hi", model: "gpt-99" }).success).toBe(false);
+  // The model is NOT client-selectable. This endpoint is public, so letting
+  // a caller name the model would let a stranger point it at the most
+  // expensive one. Zod strips unknown keys, so the request still succeeds —
+  // the value is discarded, never honoured. (This replaces an older test that
+  // asserted unknown models were rejected outright, from when the field was a
+  // z.enum. Rejecting and stripping are different routes to the same
+  // guarantee: the client cannot choose the model.)
+  it("ignores a client-supplied model instead of honouring it", () => {
+    const parsed = chatBody.safeParse({ message: "hi", model: "gpt-99" });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data).not.toHaveProperty("model");
   });
 });
 
@@ -30,6 +39,12 @@ describe("ttsBody", () => {
   });
   it("rejects unknown languages", () => {
     expect(ttsBody.safeParse({ text: "hi", lang: "xx-YY" }).success).toBe(false);
+  });
+  it("ignores a client-supplied voice and model", () => {
+    const parsed = ttsBody.safeParse({ text: "hi", voice: "anushka", model: "bulbul:v2" });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data).not.toHaveProperty("voice");
+    expect(parsed.success && parsed.data).not.toHaveProperty("model");
   });
 });
 

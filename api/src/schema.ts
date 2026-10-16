@@ -19,11 +19,20 @@ export const chatBody = z.object({
   message: z.string().min(1).max(2000),
   history: z.array(historyItem).max(6).default([]),
   files: z.array(attachedFile).max(4).default([]),
-  /* Deliberately a plain string, not an enum. The Worker's CHAT_MODEL env is
-     authoritative, and an enum here blocked swapping to a cheaper model
-     without a code change. The frontend no longer sends this at all — it is
-     only reachable by a direct API caller. */
-  model: z.string().max(64).optional(),
+  /* NO `model` field, deliberately.
+
+     This endpoint is PUBLIC. If a caller could name the model, a stranger
+     could point it at the most expensive one and burn the prepaid balance.
+     The model comes from the Worker's CHAT_MODEL env and nothing else.
+
+     The old `z.enum([...])` enforced that by rejecting unknown names, but it
+     also meant swapping to a cheaper model needed a code change. Dropping
+     the field entirely does both jobs: Zod strips unknown keys by default,
+     so a client that still sends `model` gets it silently discarded rather
+     than a 400 — and it can never be honoured.
+
+     To change the model: edit CHAT_MODEL in api/wrangler.toml and
+     `wrangler deploy`. No code change, no frontend rebuild. */
 });
 
 const LANGS = [
@@ -36,8 +45,10 @@ export const ttsBody = z.object({
   // 2000 chars stays under Bulbul v3's 2500-char request ceiling.
   text: z.string().min(1).max(2000),
   lang: z.enum(LANGS).default("en-IN"),
-  voice: z.string().max(60).optional().default(""),
-  model: z.enum(["bulbul:v2", "bulbul:v3", "bulbul:v4-flash"]).optional(),
+  /* No `voice` and no `model` — same reason as chatBody. This endpoint is
+     public, so neither is client-selectable. TTS_MODEL and TTS_VOICE in
+     api/wrangler.toml decide. A caller that still sends them gets them
+     stripped, not honoured. */
 });
 
 export type ChatBody = z.infer<typeof chatBody>;
