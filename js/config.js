@@ -14,7 +14,15 @@ export const CONFIG = {
 
     /* Base path of YOUR serverless proxy. The proxy holds the API key.
        Never put a key in this file — everything here is public. */
-    apiBase: "/api",
+    /* Empty on purpose: the Worker serves BOTH the API and this bundle from
+       the same origin, so the routes are at the root (/chat, /tts, /stt).
+       This used to be "/api" from when the API lived behind a separate
+       proxy — and the Worker has never had an /api prefix. Every request
+       from the browser hit /api/chat, matched nothing, and was answered by
+       the SPA fallback with index.html at status 200. The frontend then
+       failed to parse HTML as JSON and showed "couldn't reach the
+       assistant" — on every single message, since the first deploy. */
+    apiBase: "",
 
     /* Model and voice are NOT set here on purpose.
 
@@ -28,6 +36,12 @@ export const CONFIG = {
        change the model or voice, edit those vars and `wrangler deploy`
        — no frontend rebuild needed. */
 
+    /* Speech-to-text runs on the WORKER (POST /stt → Sarvam Saaras), not
+       in the browser. The model and language are set there (STT_MODEL /
+       STT_LANG in api/wrangler.toml), so nothing here selects them.
+       maxRecordSeconds below is load-bearing: Sarvam's REST endpoint
+       rejects audio over 30s with a 422. Do not raise one without the
+       other. Demo mode has no server, so the mic is disabled there. */
     maxRecordSeconds: 30,   // hard stop for one voice recording
     historyWindow: 6,       // previous messages sent as context. Six turns is
                             // plenty for a portfolio FAQ bot; every extra turn
