@@ -19,6 +19,14 @@ import { apiSpeak } from "./brain.js";
 
   let voices = [], speakBtnActive = null;
 
+  /* The <audio> currently playing a Sarvam clip. Module scope because
+     stopSpeaking() has to be able to kill it: before this existed,
+     stopSpeaking() only cancelled speechSynthesis, so the Sarvam audio kept
+     playing. Tapping the button twice therefore started a SECOND clip on top
+     of the first, and switching chats left the old one running. */
+  let currentAudio = null;
+  let speakPhase = "idle";   // idle | loading | speaking | paused
+
   const loadVoices = () => { voices = window.speechSynthesis ? speechSynthesis.getVoices() : []; };
   if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
 
@@ -30,25 +38,61 @@ import { apiSpeak } from "./brain.js";
       || voices.find((v) => /en/i.test(v.lang)) || null;
   }
 
-  function setSpeakState(btn, on) {
-    if (speakBtnActive && speakBtnActive !== btn) {
-      speakBtnActive.classList.remove("speaking");
-      const u = speakBtnActive.querySelector("use"); if (u) u.setAttribute("href", "#i-speaker");
-    }
-    speakBtnActive = on ? btn : (speakBtnActive === btn ? null : speakBtnActive);
-    if (btn) {
-      btn.classList.toggle("speaking", on);
-      const u = btn.querySelector("use"); if (u) u.setAttribute("href", on ? "#i-mute" : "#i-speaker");
+  /* One button, four states. `loading` is the one that was missing: fetching
+     the Sarvam clip is a network round trip, and with no visible state the
+     button looked dead for a second or two — which is exactly when people
+     tap it again and end up with two clips queued. */
+  function setSpeakState(btn, phase) {
+    if (speakBtnActive && speakBtnActive !== btn) setSpeakState(speakBtnActive, "idle");
+    speakBtnActive = phase === "idle" ? (speakBtnActive === btn ? null : speakBtnActive) : btn;
+    speakPhase = phase;
+    if (!btn) return;
+    btn.classList.toggle("speaking", phase === "speaking" || phase === "paused");
+    btn.classList.toggle("loading", phase === "loading");
+    const u = btn.querySelector("use");
+    if (u) {
+      u.setAttribute("href",
+        phase === "loading" ? "#i-lotus"
+          : phase === "speaking" ? "#i-pause"
+            : phase === "paused" ? "#i-play"
+              : "#i-speaker");
     }
   }
 
   export function stopSpeaking() {
+    if (currentAudio) {
+      const src = currentAudio.src;
+      currentAudio.onended = currentAudio.onerror = null;
+      try { currentAudio.pause(); } catch (e) {}
+      currentAudio = null;
+      /* Free the blob — these are per-reply and would otherwise pile up. */
+      if (src && src.indexOf("blob:") === 0) { try { URL.revokeObjectURL(src); } catch (e) {} }
+    }
     if (window.speechSynthesis) speechSynthesis.cancel();
-    if (speakBtnActive) setSpeakState(speakBtnActive, false);
+    speakPhase = "idle";
+    if (speakBtnActive) setSpeakState(speakBtnActive, "idle");
+  }
+
+  /* While a clip is playing the button is a PAUSE control, not a stop. */
+  function pauseSpeaking(btn) {
+    if (currentAudio) { try { currentAudio.pause(); } catch (e) {} }
+    else if (window.speechSynthesis) { try { speechSynthesis.pause(); } catch (e) {} }
+    setSpeakState(btn, "paused");
+  }
+
+  function resumeSpeaking(btn) {
+    if (currentAudio) { currentAudio.play().catch(() => {}); }
+    else if (window.speechSynthesis) { try { speechSynthesis.resume(); } catch (e) {} }
+    setSpeakState(btn, "speaking");
   }
 
   export function speakToggle(text, btn) {
-    if (btn && btn.classList.contains("speaking")) { stopSpeaking(); return; }
+    /* Playing or paused -> pause / resume. Loading -> a second tap cancels. */
+    if (btn && btn.classList.contains("speaking")) {
+      if (speakPhase === "paused") resumeSpeaking(btn); else pauseSpeaking(btn);
+      return;
+    }
+    if (btn && btn.classList.contains("loading")) { stopSpeaking(); return; }
     speak(text, btn);
   }
 
@@ -79,18 +123,30 @@ import { apiSpeak } from "./brain.js";
     const clean = speechText(text);
     if (!clean) return;
     if (CONFIG.mode === "api") {
-      setSpeakState(btn, true);
+      setSpeakState(btn, "loading");
       try {
         const url = await apiSpeak(clean);
+        /* The visitor may have switched chats or hit stop while we were
+           fetching. Do not start playback into a UI that has moved on —
+           that is how a clip used to "come back" seconds later. */
+        if (speakBtnActive !== btn) { try { URL.revokeObjectURL(url); } catch (e) {} return; }
+
         const audio = new Audio(url);
-        const done = () => { setSpeakState(btn, false); URL.revokeObjectURL(url); };
-        audio.onended = () => { done(); afterSpeak(); };
-        audio.onerror = done;
+        currentAudio = audio;
+        const release = () => {
+          if (currentAudio === audio) currentAudio = null;
+          try { URL.revokeObjectURL(url); } catch (e) {}
+        };
+        audio.onended = () => { release(); setSpeakState(btn, "idle"); afterSpeak(); };
+        audio.onerror = () => { release(); setSpeakState(btn, "idle"); };
+
+        setSpeakState(btn, "speaking");
         /* play() rejects under the autoplay policy and on a bad blob. It used
            to be fired and forgotten, so a blocked play looked identical to a
            working one with the volume down. */
         await audio.play().catch((err) => {
-          done();
+          release();
+          setSpeakState(btn, "idle");
           console.warn("[tts] playback blocked:", err && err.message);
           showToast("Tap once more — the browser blocked playback");
         });
@@ -99,7 +155,7 @@ import { apiSpeak } from "./brain.js";
         /* The real voice failed. Falling back to the browser voice is a
            reasonable last resort, but doing it SILENTLY is what made this so
            hard to diagnose — it looked like the feature worked. Say so. */
-        setSpeakState(btn, false);
+        setSpeakState(btn, "idle");
         console.warn("[tts] Sarvam voice failed, falling back to browser voice:", e && e.message);
       }
     }
@@ -108,9 +164,9 @@ import { apiSpeak } from "./brain.js";
     const v = pickVoice(settings.lang);
     if (v) u.voice = v;
     u.lang = settings.lang;
-    setSpeakState(btn, true);
-    u.onend = () => { setSpeakState(btn, false); afterSpeak(); };
-    u.onerror = () => setSpeakState(btn, false);
+    setSpeakState(btn, "speaking");
+    u.onend = () => { setSpeakState(btn, "idle"); afterSpeak(); };
+    u.onerror = () => setSpeakState(btn, "idle");
     speechSynthesis.speak(u);
   }
 
