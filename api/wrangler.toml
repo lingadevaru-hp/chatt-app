@@ -16,7 +16,13 @@ not_found_handling = "single-page-application"
 [vars]
 RATE_LIMIT = "20"
 RATE_WINDOW_S = "60"
-DAILY_CEILING = "300"
+# Worst-case spend cap, and the ONLY limit that bounds cost regardless of who
+# is asking. One uncached spoken reply is ~₹0.44 (TTS ₹0.40 + chat ₹0.04), so
+# 300/day allowed ₹131/day — ₹3,938/month, against a ₹100/month budget.
+# 50 caps a bad day at ~₹22 while leaving ample room for real traffic, since
+# the greeting and project list are served from cache at ₹0.
+# The monthly backstop is the spend alert on the Sarvam dashboard, not this.
+DAILY_CEILING = "50"
 CHAT_MODEL = "sarvam-105b-conversations"
 # bulbul:v4-flash: latest TTS (10-2026) — sub-250ms first audio, ~40% faster
 # than v3, ₹20 vs ₹30 per 10k chars. Voices are per-language persona IDs,
