@@ -40,6 +40,9 @@ import { $, $$, esc, icon, nowISO, sleep, formatReply, wireRich, plain, showToas
         '<button class="chat-item__del" aria-label="Delete chat">' + icon("i-trash", 15) + "</button>";
       row.addEventListener("click", (e) => {
         if (e.target.closest(".chat-item__del")) return;
+        /* Switching chats must cut any clip still playing from the old one —
+           otherwise it keeps talking over a thread the visitor has left. */
+        stopSpeaking();
         state.activeId = c.id; saveChats(); renderChatList(); renderThread(); closeSidebar();
       });
       row.querySelector(".chat-item__del").addEventListener("click", (e) => {
@@ -403,6 +406,9 @@ import { $, $$, esc, icon, nowISO, sleep, formatReply, wireRich, plain, showToas
   /* Start a fresh chat WITHOUT creating anything.
      Call it as often as you like — the history stays clean. */
   export function startNewChat() {
+    /* Same reason: a reply read aloud from the previous chat must not follow
+       the visitor into a blank one. */
+    stopSpeaking();
     state.activeId = null;
     saveChats();
     renderChatList();
