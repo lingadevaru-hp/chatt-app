@@ -91,7 +91,10 @@ export async function underDailyCeiling(
   route: string,
   now = Date.now(),
 ): Promise<boolean> {
-  const ceiling = Number(env.DAILY_CEILING || 300);
+  /* Fallback matches api/wrangler.toml. It used to be 300, which meant a
+     deploy with the var missing silently allowed ~₹131/day — 40x the
+     owner's monthly budget. Keep the two in step. */
+  const ceiling = Number(env.DAILY_CEILING || 50);
   const day = new Date(now).toISOString().slice(0, 10);
   const key = `ceil:${route}:${day}`;
 
