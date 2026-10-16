@@ -19,7 +19,11 @@ export const chatBody = z.object({
   message: z.string().min(1).max(2000),
   history: z.array(historyItem).max(6).default([]),
   files: z.array(attachedFile).max(4).default([]),
-  model: z.enum(["sarvam-105b-conversations", "sarvam-105b"]).optional(),
+  /* Deliberately a plain string, not an enum. The Worker's CHAT_MODEL env is
+     authoritative, and an enum here blocked swapping to a cheaper model
+     without a code change. The frontend no longer sends this at all — it is
+     only reachable by a direct API caller. */
+  model: z.string().max(64).optional(),
 });
 
 const LANGS = [
