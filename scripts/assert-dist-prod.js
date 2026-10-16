@@ -22,7 +22,12 @@
 
    Usage:  npm run deploy      (which runs this first)
    ================================================================ */
-import { readFileSync } from "node:fs";
+/* CommonJS on purpose. The root package.json has no "type": "module", so
+   node parses this as CJS — an `import` statement here is a SyntaxError and
+   the guard crashes instead of refusing. It shipped that way once and made
+   `npm run deploy` impossible to run at all. scripts/assert-prod.js is CJS
+   for the same reason; match it. */
+const { readFileSync } = require("node:fs");
 
 const MARKER = "dist/.build-mode";
 let mode = "";
