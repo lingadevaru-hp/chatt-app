@@ -1,9 +1,11 @@
 /* ================================================================
      J7 · SPEECH  (text-to-speech + speech-to-text)
      Split → js/speech.js
-     Browser-native Web Speech API: free, no round trip, nothing leaves
-     the device. Where unsupported we degrade to a simulated input so the
-     demo still shows the flow instead of dead-ending.
+     TTS = Sarvam Bulbul via our Worker. STT = Sarvam Saaras via our Worker
+     too — the browser's own Web Speech API is deliberately NOT used: it only
+     really works in Chrome, it hands the audio to Google, and it is not the
+     API key the owner pays for. recordToBlob() below is the single audio
+     path, shared with call mode.
      ================================================================ */
 import { CONFIG } from "./config.js";
 import { settings } from "./store.js";
@@ -80,17 +82,145 @@ import { apiSpeak } from "./brain.js";
   }
 
   /* --- speech-to-text --- */
-  export const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let recognition = null, recording = false, recTimer = null, recStart = 0, waveTimer = null;
+  /* ----------------------------------------------------------------
+     AUDIO — the one place this app touches the microphone.
+
+     Records with MediaRecorder (every browser) and returns a Blob. Shared
+     by the composer mic and by call mode, so the audio path exists once.
+
+     THE 30-SECOND CAP IS NOT ARBITRARY. Sarvam's REST speech-to-text
+     endpoint rejects audio longer than 30s with a 422, so maxSeconds must
+     stay at or under CONFIG.maxRecordSeconds (30). Do not raise one
+     without the other.
+
+     stopOnSilence: call mode has no Stop button, so it ends itself after
+     `silenceMs` of quiet. Energy-based, not a real VAD — deliberately
+     forgiving so a pause mid-sentence does not cut the visitor off.
+
+     NOTE the honest tradeoff: the browser API used to return text WHILE
+     you spoke. This path is batch — one round trip after recording stops.
+     Live-as-you-speak needs Sarvam's Realtime WebSocket API.
+     ---------------------------------------------------------------- */
+  let activeRecorder = null;
+
+  export function canRecord() {
+    return CONFIG.mode === "api"
+      && !!navigator.mediaDevices && !!navigator.mediaDevices.getUserMedia
+      && typeof MediaRecorder !== "undefined";
+  }
+
+  export function recordToBlob({ maxSeconds, stopOnSilence = false, silenceMs = 1400, onLevel = null }) {
+    return new Promise((resolve, reject) => {
+      /* Register the stop hook BEFORE asking for the mic. getUserMedia is
+         async, so without this a Stop tapped while the permission prompt is
+         still open would find nothing to stop — and the recorder would then
+         start anyway and run the full cap. Resolves null in that case. */
+      let cancelled = false;
+      activeRecorder = { stop: () => { cancelled = true; } };
+
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          activeRecorder = null;
+          resolve(null);
+          return;
+        }
+        const mr = new MediaRecorder(stream);
+        const parts = [];
+        let ctx = null, analyser = null, buf = null, raf = 0, done = false;
+        let lastLoud = Date.now();
+        let tick = null;
+
+        const finish = () => {
+          if (done) return;
+          done = true;
+          activeRecorder = null;
+          if (tick) clearInterval(tick);
+          if (raf) cancelAnimationFrame(raf);
+          if (ctx) { try { ctx.close(); } catch (e) {} }
+          try { mr.stop(); } catch (e) {}
+        };
+
+        mr.ondataavailable = (e) => { if (e.data && e.data.size) parts.push(e.data); };
+        mr.onstop = () => {
+          /* Release the mic the moment recording ends — the OS indicator
+             must not stay lit while we wait on the network. */
+          stream.getTracks().forEach((t) => t.stop());
+          const type = mr.mimeType || "audio/webm";
+          resolve({ blob: new Blob(parts, { type }), type });
+        };
+
+        tick = setInterval(() => {
+          if (Date.now() - lastLoud >= maxSeconds * 1000) finish();
+        }, 200);
+
+        if (stopOnSilence) {
+          try {
+            ctx = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = ctx.createAnalyser();
+            analyser.fftSize = 512;
+            ctx.createMediaStreamSource(stream).connect(analyser);
+            buf = new Uint8Array(analyser.fftSize);
+            const listen = () => {
+              if (done) return;
+              analyser.getByteTimeDomainData(buf);
+              let peak = 0;
+              for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
+              if (onLevel) onLevel(peak / 128);
+              if (peak > 8) lastLoud = Date.now();
+              else if (Date.now() - lastLoud > silenceMs) { finish(); return; }
+              raf = requestAnimationFrame(listen);
+            };
+            listen();
+          } catch (e) {
+            /* No AnalyserNode: fall back to the hard time stop above. */
+          }
+        }
+
+        mr.start();
+        activeRecorder = { stop: finish };   /* now a real stop, not a cancel */
+      }).catch(reject);
+    });
+  }
+
+  /* End an in-flight recording early (call mode's End and Mute). The
+     promise from recordToBlob still resolves with whatever was captured;
+     callers check whether they still care. Without this, ending a call
+     leaves the mic open until the hard cap fires. */
+  export function stopActiveRecording() {
+    if (activeRecorder) activeRecorder.stop();
+  }
+
+  /* Post a clip and return the transcript. Throws on failure so callers can
+     tell "nothing heard" (empty string) apart from "the call failed". */
+  export async function transcribeBlob(blob, type) {
+    if (!blob || !blob.size) throw new Error("empty audio");
+    const res = await fetch(CONFIG.apiBase + "/stt", {
+      method: "POST",
+      headers: { "Content-Type": type },
+      body: blob,
+    });
+    if (!res.ok) {
+      const err = new Error("stt " + res.status);
+      err.status = res.status;
+      throw err;
+    }
+    const data = await res.json().catch(() => ({}));
+    return (data.transcript || "").trim();
+  }
+
+  let recording = false, transcribing = false, recTimer = null, recStart = 0, waveTimer = null;
 
   /* --- one voice capture per turn (see CONFIG.oneVoicePerTurn) ---
-     `voiceUsed` is set the moment a recording ends and cleared when the
-     composer is emptied for the next prompt. While it is set, the mic is
-     hidden — the visitor has already spoken for this turn. */
+     `voiceUsed` is set once a capture actually produced text, and cleared
+     when the composer is emptied for the next prompt. While it is set the
+     mic is hidden — the visitor has already spoken for this turn. */
   let voiceUsed = false;
 
   export function updateMicState() {
-    micBtn.hidden = recording || (CONFIG.oneVoicePerTurn && voiceUsed);
+    /* Hidden while recording, while a transcript is in flight, and once
+       this turn's single capture has produced something. */
+    micBtn.hidden = recording || transcribing || (CONFIG.oneVoicePerTurn && voiceUsed);
   }
 
   function buildWave() {
@@ -109,12 +239,21 @@ import { apiSpeak } from "./brain.js";
   }
 
   export function startRecording() {
-    if (recording) return;
+    if (recording || transcribing) return;
     /* guard: one capture per turn unless the config allows more */
     if (CONFIG.oneVoicePerTurn && voiceUsed) return;
+
+    /* Demo mode has no server, so there is nothing to transcribe with.
+       Say so rather than opening the recorder and failing later. */
+    if (!canRecord()) {
+      showToast(CONFIG.mode === "api"
+        ? "This browser can't record audio"
+        : "Voice input needs the live API — demo mode has no server");
+      return;
+    }
+
     stopSpeaking();
     recording = true;
-
     composer.classList.add("rec");
     recorder.hidden = false;
     input.hidden = true;
@@ -134,85 +273,93 @@ import { apiSpeak } from "./brain.js";
       else if (s >= CONFIG.maxRecordSeconds - 5) timerEl.classList.add("warn");
     }, 200);
 
-    if (!SR) { startSimulated(); return; }
-    try {
-      recognition = new SR();
-      recognition.lang = settings.lang;
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      let finalText = "";
-      recognition.onresult = (e) => {
-        let interim = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const t = e.results[i][0].transcript;
-          if (e.results[i].isFinal) finalText += t; else interim += t;
+    recordToBlob({ maxSeconds: CONFIG.maxRecordSeconds })
+      .then((clip) => {
+        /* null = Stop was tapped before the mic permission resolved, so
+           nothing was ever recorded. Reset quietly, no error toast. */
+        if (!clip) {
+          recording = false;
+          composer.classList.remove("rec");
+          recorder.hidden = true;
+          input.hidden = false;
+          stopBtn.hidden = true;
+          updateMicState();
+          speechDeps.onUiUpdate();
+          return;
         }
-        const parts = [finalText.trim(), interim.trim()].filter(Boolean);
-        input.value = parts.join(" ").replace(/\s{2,}/g, " ");
+        /* The recorder stopped (Stop tapped, or the cap fired). Hand the
+           clip over; the mic stays withdrawn while transcribing. */
+        recording = false;
+        transcribing = true;
+        updateMicState();
+        return transcribe(clip.blob, clip.type);
+      })
+      .catch(() => {
+        recording = false;
+        transcribing = false;
+        composer.classList.remove("rec");
+        recorder.hidden = true;
+        input.hidden = false;
+        stopBtn.hidden = true;
+        updateMicState();
         speechDeps.onUiUpdate();
-      };
-      recognition.onerror = (e) => {
-        if (e.error === "no-speech") return;
-        if (!recording) return;
-        showToast("Microphone unavailable — using demo voice input");
-        switchToSimulated();
-      };
-      recognition.start();
-    } catch (err) { startSimulated(); }
-  }
-
-  function startSimulated() {
-    const samples = ["What projects have you built?", "Tell me about your skills",
-      "Are you available for hire?", "How can I contact you?"];
-    const phrase = samples[Math.floor(Math.random() * samples.length)];
-    let i = 0;
-    const t = setInterval(() => {
-      input.value = phrase.slice(0, i);
-      i += 2;
-      if (i > phrase.length) { input.value = phrase; clearInterval(t); }
-    }, 55);
-  }
-  function switchToSimulated() {
-    if (recognition) { try { recognition.abort(); } catch (e) {} }
-    startSimulated();
+        showToast("Microphone permission denied");
+      });
   }
 
   export function stopRecording(auto) {
     if (!recording) return;
-    recording = false;
-    clearInterval(recTimer); clearInterval(waveTimer);
+    if (auto) showToast("Stopped at " + CONFIG.maxRecordSeconds + " seconds");
 
+    clearInterval(recTimer); clearInterval(waveTimer);
     composer.classList.remove("rec");
     recorder.hidden = true;
     input.hidden = false;
     stopBtn.hidden = true;
     Array.from(wave.children).forEach((b) => { b.style.height = "14%"; b.style.opacity = ".85"; });
-
-    /* Stop the recogniser FIRST so the transcript is settled before we judge
-       whether anything was captured. */
-    if (recognition) { try { recognition.stop(); } catch (e) {} recognition = null; }
-
-    if (auto) showToast("Stopped at " + CONFIG.maxRecordSeconds + " seconds");
     speechDeps.onUiUpdate();
-    /* The transcript stays in the composer for review/editing — never send
-       on the visitor's behalf (see CONFIG.autoSendVoice). Focus so they can
-       edit straight away; Send/Enter is their call. */
-    input.focus({ preventScroll: true });
 
-    const text = input.value.trim();
+    /* finish() triggers mr.onstop, which resolves recordToBlob above. */
+    if (activeRecorder) activeRecorder.stop();
+    else recording = false;
+  }
 
-    /* Withdraw the mic ONLY when something was actually captured. If nothing
-       was heard there is no spoken turn to protect — and the toast below says
-       "try again", which would be impossible with the mic already gone. */
-    voiceUsed = !!text;
-    updateMicState();
-
-    if (!CONFIG.autoSendVoice) {
-      if (!text) showToast("Didn't catch that — try again");
-      return;
+  /* Put the transcript in the composer. Never sends — the visitor reviews
+     and edits first (see CONFIG.autoSendVoice). */
+  async function transcribe(blob, type) {
+    let captured = "";
+    try {
+      captured = await transcribeBlob(blob, type);
+      if (captured) {
+        /* Assign, never append: the mic is only offered when nothing has
+           been captured this turn, and appending would double the text if
+           a retry raced the first response. */
+        input.value = captured;
+      } else {
+        showToast("Didn't catch that — try again");
+      }
+    } catch (e) {
+      /* 422 from the Worker means Sarvam could not use the audio — almost
+         always because it ran past 30s or was silent. */
+      showToast(e && e.status === 422
+        ? "Too long or unclear — try a shorter clip"
+        : "Couldn't transcribe — try again");
+    } finally {
+      transcribing = false;
+      /* Withdraw the mic ONLY when something was actually captured. If
+         nothing was heard there is no turn to protect — and the toast
+         invites a retry, which would be impossible with the mic gone. */
+      voiceUsed = !!captured;
+      updateMicState();
+      speechDeps.onUiUpdate();
+      if (captured) {
+        /* Focus so they can edit straight away. Send/Enter is their call. */
+        input.focus({ preventScroll: true });
+        if (CONFIG.autoSendVoice) {
+          setTimeout(() => { if (!speechDeps.getBusy()) speechDeps.onSubmit(); }, 120);
+        }
+      }
     }
-    if (text) setTimeout(() => { if (!speechDeps.getBusy()) speechDeps.onSubmit(); }, auto ? 250 : 120);
-    else showToast("Didn't catch that — try again");
   }
 
   micBtn.addEventListener("click", startRecording);
