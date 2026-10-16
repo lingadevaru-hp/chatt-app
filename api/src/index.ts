@@ -61,7 +61,13 @@ app.get("/health", (c) =>
 /* Public site key for the Turnstile widget. The secret never leaves the
    Worker — the frontend fetches this and renders the widget with it. */
 app.get("/turnstile-config", (c) =>
-  c.json({ siteKey: c.env.TURNSTILE_SITE_KEY || "" }),
+  /* Advertise the site key ONLY when the secret is actually configured.
+     Returning it unconditionally meant the frontend loaded Cloudflare's
+     Turnstile script and solved an invisible challenge on every page load
+     for a check that never ran — a third-party request and a wasted token
+     for nothing, while protection was still dormant. Empty siteKey = the
+     frontend renders no widget at all. */
+  c.json({ siteKey: c.env.TURNSTILE_SECRET ? c.env.TURNSTILE_SITE_KEY || "" : "" }),
 );
 
 async function guard(c: Context<{ Bindings: Env }>, route: string) {
