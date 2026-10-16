@@ -504,3 +504,56 @@ cache lookup earlier.
 **The lesson, twice over now:** when a change starts intercepting requests,
 grep the tests for messages it now intercepts. PR #1 broke a schema test the
 same way.
+
+## 17 · THE SPEAKER BUTTON (1.14.0)
+
+Four things were wrong with one 34-pixel button.
+
+### The double-play bug
+
+`stopSpeaking()` cancelled `speechSynthesis` — but the Sarvam clip is a plain
+`new Audio(blobUrl)`, and nothing held a reference to it. So it kept playing
+after a "stop", and tapping twice created a **second** Audio element: two clips
+over each other. Switching chats left the old one running too.
+
+`speech.js` now keeps `currentAudio` at module scope, and `stopSpeaking()`
+pauses it, clears its handlers and revokes the blob. `startNewChat()` and the
+chat-row click both call `stopSpeaking()` — previously neither did.
+
+### It looked dead while fetching
+
+`setSpeakState(btn, true)` was called *before* the `apiSpeak()` round trip, so
+the button showed its "speaking" ring while nothing was playing. Two seconds of
+that reads as a broken UI, and it is exactly when people tap again.
+
+The button now has four states — `idle`, `loading`, `speaking`, `paused`.
+`loading` spins the lotus mark; `.act.loading` is in `styles/thread.css`.
+
+### No pause
+
+Tapping while playing used to stop outright. It is now pause/resume — `i-pause`
+and `i-play` were added to the sprite. `speakToggle()` reads the button's own
+class to decide, so no extra state has to be kept in sync.
+
+### Playback started into a UI that had moved on
+
+If a chat switch or a stop happened during the fetch, the clip still began when
+it arrived — which is how a reply "came back" seconds later. `speak()` now
+checks `speakBtnActive !== btn` after the await and drops the clip instead.
+
+## 18 · OFF-TOPIC AND LANGUAGES (1.14.0)
+
+The scope rule was **inverted**, on purpose. It used to refuse off-topic
+questions outright; visitors testing whether this is a real model or canned
+answers read that as canned. It now gives the **short real answer** — "2 + 2 is
+4", the Prime Minister's name — then jokes and steers back. One line, never
+deeper.
+
+**Code is the one hard refusal**, and it stays hard: no snippets, no fixes, no
+pseudocode, however much they insist. That is the misuse worth refusing, and it
+is refused with a joke rather than a wall.
+
+The language rule is now explicit: **23 Indian languages**, replies written in
+**their own script** rather than romanised, and natural Kannada sprinkled into
+the English — *guru*, *macha*, *swapla*, *beku*, *illa*, *chennagide*,
+*hogi banni*.
