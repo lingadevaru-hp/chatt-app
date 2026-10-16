@@ -651,15 +651,23 @@ screen long after a reply finished. It now clears `src` and reloads.
 
 ### Where the money actually goes
 
-| Service | Rate | Typical call |
-|---|---|---|
-| TTS (Bulbul v4-flash) | ₹20 / 10k chars | ~200 chars = **₹0.40** |
-| Chat (105B) | ₹15 / ₹5 cached / ₹60 per 1M | ~1,900 in + 150 out ≈ ₹0.04 |
-| STT (Saaras v4) | ₹30 / hour | 5 s ≈ ₹0.04 |
+These are **billed** rates, read off the September 2026 invoice rather than
+the pricing page — the two disagree, and the invoice is what you pay.
 
-**TTS is roughly 10× everything else combined.** So the levers, in order:
-shorter spoken replies (the persona already says 1-3 sentences), never paying
-for silence (done), and the answer cache for repeats (already seeded).
+| Service | Billed rate | Typical call |
+|---|---|---|
+| TTS — `bulbul:v4-flash` | **₹10 / 10k chars** | ~200 chars = **₹0.20** |
+| TTS — `bulbul:v3` (legacy) | ₹30 / 10k chars | 3x the v4 cost |
+| Chat — `sarvam-105b` | ₹15 / ₹60 per 1M in/out | ~1,900 in + 70 out ≈ ₹0.03 |
+| STT — `saaras:v4` | **₹29.40 / hour** | 5 s ≈ ₹0.04 |
+
+So: a text reply ≈ **₹0.23**, a voice turn ≈ **₹0.27**, and ₹100 is roughly
+**430 text replies**. Measured split of a real month: **TTS 69%, STT 16%,
+chat 14%** — and half of the TTS spend was the legacy v3 line, now gone.
+
+**TTS is ~5× chat**, so the levers are: shorter spoken replies (the persona
+already says 1-3 sentences), never paying for silence (done), and the answer
+cache for repeats (already seeded).
 
 ## 22 · TURNSTILE IS DORMANT, SO IT SHOULD BE SILENT (1.15.1)
 
@@ -685,3 +693,23 @@ bound to the client IP for one hour (`makeSession`/`checkSession` in
 `api/src/turnstile.ts`). Mobile IPs change — wifi to 5G, carrier NAT — so a
 session can go stale mid-visit. The frontend recovers by re-verifying on a 403,
 but that is an extra round trip on a phone. Worth watching after enabling.
+
+## 23 · THE DAILY CEILING WAS 40× THE BUDGET (1.15.2)
+
+`DAILY_CEILING` was 300. One uncached spoken reply costs about **₹0.27**
+(TTS ₹0.20 + chat ₹0.03 + STT ₹0.04 — TTS dominates), so 300/day permitted
+**₹81/day, or ₹2,430 a month**, against a stated budget of ₹100/month. The
+budget is roughly **430 uncached replies in total**.
+
+Lowered to **50/day** — a bad day is capped at ~₹14, and real traffic is
+unaffected because the greeting and the project list are served from the
+seeded answer cache at ₹0.
+
+**This is the only limit that bounds spend regardless of who is asking.** A bot
+that passes Turnstile burns the same ceiling; the rate limit only bounds the
+burst. So the ceiling is the cost control, and Turnstile is defence in depth on
+top of it.
+
+**The ceiling bounds a day, not a month.** Even at 50/day, thirty bad days
+would be ₹410. The only thing that can bound the month is the **spend alert on
+the Sarvam dashboard** — keep it on, with auto-recharge off.
