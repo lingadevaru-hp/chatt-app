@@ -4,7 +4,8 @@
 // Routes (exactly the two the frontend contract needs, plus a keyless
 // health check used by the deploy checklist):
 //   POST /chat  { message, history[], files?[], model? } → { reply, thoughts[] }
-//   POST /tts   { text, lang, voice?, model? }           → audio/wav bytes
+//   POST /tts   { text, lang }                           → audio/wav bytes
+//   POST /stt   raw audio body + Content-Type            → { transcript }
 //   GET  /health → { ok: true, mode: "proxy" }
 //
 // Order per request: validate (Zod, 400) → daily ceiling (429) →
@@ -13,7 +14,7 @@
 // the final backstop: at zero balance Sarvam answers 402 and stops.
 import { Hono, type Context } from "hono";
 import { chatBody, ttsBody } from "./schema";
-import { sarvamChat, sarvamTts, resolveVoice, ProviderError } from "./sarvam";
+import { sarvamChat, sarvamTts, sarvamStt, resolveVoice, ProviderError } from "./sarvam";
 import { AnswerCache, MemoCache } from "./cache";
 import { allowRequest, underDailyCeiling, clientIp, type LimiterEnv } from "./limits";
 
@@ -22,7 +23,13 @@ type Env = LimiterEnv & {
   CHAT_MODEL?: string;
   TTS_MODEL?: string;
   TTS_VOICE?: string;
+  STT_MODEL?: string;
+  STT_LANG?: string;
 };
+
+/* 30s of webm/opus is roughly 60-120 KB; 2 MB is generous headroom without
+   letting someone POST an arbitrary payload at the paid endpoint. */
+const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -137,6 +144,40 @@ app.post("/tts", async (c) => {
   } catch (e) {
     const pe = e instanceof ProviderError ? e : new ProviderError(502, "provider error");
     return c.json({ error: "speech unavailable", detail: pe.message }, providerStatus(pe));
+  }
+});
+
+app.post("/stt", async (c) => {
+  const denied = await guard(c, "stt");
+  if (denied) return denied;
+
+  const audio = await c.req.arrayBuffer();
+  if (!audio.byteLength) return c.json({ error: "empty audio" }, 400);
+  if (audio.byteLength > MAX_AUDIO_BYTES) return c.json({ error: "audio too large" }, 413);
+
+  /* Model and language are SERVER-SIDE ONLY, like chat and tts. */
+  const model = c.env.STT_MODEL || "saaras:v4";
+  const lang = c.env.STT_LANG || "unknown";
+  /* Browsers send e.g. "audio/webm;codecs=opus" — the provider wants just
+     the mime type, so strip the parameters. */
+  const mime = (c.req.header("content-type") || "audio/webm").split(";")[0].trim();
+
+  try {
+    const { transcript, languageCode } = await sarvamStt(
+      c.env.SARVAM_API_KEY!,
+      model,
+      lang,
+      audio,
+      mime,
+    );
+    return c.json({ transcript, languageCode });
+  } catch (e) {
+    const pe = e instanceof ProviderError ? e : new ProviderError(502, "provider error");
+    /* 422 from Sarvam means bad format or audio over 30s. Passing it
+       through lets the frontend say something specific instead of a
+       generic "try again" when the visitor simply spoke too long. */
+    const status = pe.status === 422 ? 422 : providerStatus(pe);
+    return c.json({ error: "could not transcribe", detail: pe.message }, status);
   }
 });
 

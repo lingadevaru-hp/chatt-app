@@ -5,6 +5,9 @@
 //   by reasoning and returns empty content with finish_reason "length".
 // - TTS: POST /text-to-speech {text, language_code, speaker, model,
 //   output_audio_codec}, responds {request_id, audios:[base64 wav]}.
+// - STT: POST /speech-to-text, multipart form-data {file, model,
+//   language_code, mode}, responds {request_id, transcript, language_code}.
+//   Max 30s of audio per REST request.
 // - TTS speaker names are per-model. Notably "anushka" (the frontend
 //   CONFIG default) is bulbul:v2-only; bulbul:v3 wants short names like
 //   "shubh". VOICES_BY_MODEL enforces that so a stale default 400s loudly
@@ -12,6 +15,7 @@
 
 export const CHAT_URL = "https://api.sarvam.ai/v1/chat/completions";
 export const TTS_URL = "https://api.sarvam.ai/text-to-speech";
+export const STT_URL = "https://api.sarvam.ai/speech-to-text";
 
 // Short-name voices valid on bulbul:v3 (REST reference, 10-2026). v2 keeps
 // its own four; v4-flash takes persona IDs (name_lang_style) instead.
@@ -123,6 +127,55 @@ export async function sarvamTts(
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
+}
+
+/**
+ * Speech-to-text. Replaces the browser's Web Speech API, which only really
+ * works in Chrome and hands the audio to Google. Here the audio goes to the
+ * owner's own Worker and then to Sarvam, and every browser can record.
+ *
+ * Contract (docs.sarvam.ai, 10-2026): POST multipart/form-data with `file`
+ * (required), `model`, `language_code` (BCP-47 or "unknown" to auto-detect),
+ * and `mode` (saaras models only). Responds
+ * { request_id, transcript, language_code, language_probability }.
+ *
+ * LIMIT: the REST endpoint accepts up to 30 SECONDS per request and 422s
+ * beyond that — which is exactly why CONFIG.maxRecordSeconds is 30. Do not
+ * raise one without the other.
+ *
+ * Do NOT set Content-Type by hand: FormData appends the multipart boundary,
+ * and overriding it produces a body the provider cannot parse.
+ */
+export async function sarvamStt(
+  apiKey: string,
+  model: string,
+  languageCode: string,
+  audio: ArrayBuffer,
+  mimeType: string,
+): Promise<{ transcript: string; languageCode: string | null }> {
+  const form = new FormData();
+  /* Browsers record webm/opus (Chrome, Firefox) or mp4 (Safari). Sarvam
+     accepts both, so pass the real mime through rather than assuming. */
+  const ext = mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : "webm";
+  form.append("file", new Blob([audio], { type: mimeType }), `clip.${ext}`);
+  form.append("model", model);
+  form.append("language_code", languageCode || "unknown");
+  /* saaras models take a mode; saarika does not. `transcribe` keeps the
+     spoken language as-is, which is what the composer wants — the visitor
+     may speak English or Kannada and should see back what they said. */
+  if (model.startsWith("saaras")) form.append("mode", "transcribe");
+
+  const res = await fetch(STT_URL, {
+    method: "POST",
+    headers: { "api-subscription-key": apiKey },
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    throw new ProviderError(res.status, err.slice(0, 300));
+  }
+  const data = (await res.json()) as { transcript?: string; language_code?: string | null };
+  return { transcript: (data.transcript || "").trim(), languageCode: data.language_code ?? null };
 }
 
 export class ProviderError extends Error {
