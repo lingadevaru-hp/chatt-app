@@ -19,7 +19,15 @@ import { prerenderedUrl } from "./prerendered.js";
       }
       for (const t of tokens) {
         if (t === k) return 2;
-        if (t.length >= 4 && k.length >= 4 && (t.startsWith(k) || k.startsWith(t))) return 2;
+        /* Allow plural / suffix drift — "skill" ~ "skills", "project" ~
+           "projects". But NOT words that merely share a prefix: "your"
+           used to match "yourself", which made "tell me about your
+           skills" route to the *about* entry instead of *skills*. Cap the
+           difference at two characters so only real suffixes pass. */
+        if (t.length >= 4 && k.length >= 4) {
+          const [short, long] = t.length <= k.length ? [t, k] : [k, t];
+          if (long.startsWith(short) && long.length - short.length <= 2) return 2;
+        }
       }
       return 0;
     };
@@ -48,7 +56,8 @@ import { prerenderedUrl } from "./prerendered.js";
       body: JSON.stringify({
         message: text,
         history: history,
-        model: CONFIG.chatModel,
+        /* no `model` — the Worker decides (CHAT_MODEL env). Sending it from
+           here used to override the env var and make it a dead setting. */
         files: (files || []).map((f) => ({ name: f.name, type: f.type, dataUrl: f.dataUrl }))
       })
     });
@@ -70,7 +79,9 @@ import { prerenderedUrl } from "./prerendered.js";
     const res = await fetch(CONFIG.apiBase + "/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: clipped, model: CONFIG.ttsModel, voice: CONFIG.ttsVoice, lang: settings.lang })
+      /* no model/voice — the Worker decides (TTS_MODEL / TTS_VOICE env), so a
+         stale voice name here can never fight the model the Worker picks. */
+      body: JSON.stringify({ text: clipped, lang: settings.lang })
     });
     if (!res.ok) throw new Error("tts " + res.status);
     /* The proxy coerces model-incompatible voices (e.g. anushka on v3) and
