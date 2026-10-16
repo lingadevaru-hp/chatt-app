@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<!--
+  ════════════════════════════════════════════════════════════════════════
+  THOSHAN · PORTFOLIO ASSISTANT — split frontend (was: single-file basement)
+  Version 1.8.0. See Settings → About for the running version.
+  ─────────────────────────────────────────────────────────────────
+  BUILD MODEL (Phase 1b): ES modules + Vite. index.html is the shell:
+  CSS arrives via <link> (C1 first, C11 last — order matters), JS via
+  <script type="module" src="/js/main.js">. Only chat.js orchestrates;
+  leaf modules never import it (callbacks via init*() instead).
+  Run `npm run dev` (modules do not load over file:// — expected).
+  `npm run build` → dist/ static site. `npm run build:single` → one
+  self-contained dist/index.html (portable build stays producible).
+  HTML partials (H1–H8 → partials/*.html) are DEFERRED: the markup is
+  already cleanly sectioned in this file and partials need a build
+  plugin for the least benefit. Revisit only with a real need.
+  ════════════════════════════════════════════════════════════════════════
+
+  WHAT THIS IS
+    A voice-enabled chatbot for a personal portfolio site. Visitors can type
+    or talk; replies can be read aloud. There is also a full-screen "voice
+    call" mode. It ships in DEMO mode with a local answer engine — no API key
+    needed — and switches to a live backend with one config change.
+
+  DESIGN RULES  (keep these when you extend it)
+    · Split is done for CSS (styles/*.css) and JS (js/*.js, ES modules).
+      HTML stays in this file (partials deferred — see note above).
+      Every remaining block is still labelled with the file it would become.
+      Search for "Split →" to find them all.
+    · No frameworks, no dependencies in the app itself. Vanilla HTML/CSS/JS;
+      Vite is a dev/build tool only and ships no runtime.
+    · Every colour, radius and font comes from a CSS custom property in C1.
+      Never hard-code a colour outside C1 — that is what makes theming work.
+    · Views are shown/hidden with the `hidden` attribute or a `.show` class.
+      Nothing is ever destroyed and rebuilt just to switch screens.
+    · App state lives in ONE object (J4 Store) and persists to localStorage.
+    · Speech is browser-native (Web Speech API). Nothing is uploaded by us.
+
+  ── FILE MAP ──────────────────────────────────────────────────────────────
+  CSS
+    C1  Tokens & themes ......... styles/tokens.css
+    C2  Reset & base ............ styles/base.css
+    C3  Layout shell ............ styles/layout.css
+    C4  Sidebar ................. styles/sidebar.css
+    C5  Topbar & menus .......... styles/topbar.css
+    C6  Chat thread ............. styles/thread.css
+    C7  Composer ................ styles/composer.css
+    C8  Voice call .............. styles/call.css
+    C9  Overlays ................ styles/overlays.css
+    C10 Motion .................. styles/motion.css
+    C11 Responsive .............. styles/responsive.css
+  HTML
+    H1  Icon sprite ............. partials/icons.html
+    H2  Sidebar ................. partials/sidebar.html
+    H3  Topbar .................. partials/topbar.html
+    H4  Thread + composer ....... partials/chat.html
+    H5  Voice call .............. partials/call.html
+    H6  Search chats ............ partials/search.html
+    H7  Settings ................ partials/settings.html
+    H8  Modals + toast .......... partials/modals.html
+  JS
+    J1  Config .................. js/config.js
+    J2  Knowledge base .......... js/knowledge.js
+    J3  Utilities ............... js/utils.js
+    J4  Store (state) ........... js/store.js
+    J5  Brain (demo + API) ...... js/brain.js
+    J6  Chat view ............... js/chat.js
+    J7  Speech (TTS / STT) ...... js/speech.js
+    J8  Voice call .............. js/call.js
+    J9  Search .................. js/search.js
+    J10 Settings, theme & boot .. js/settings.js
+    J11 Attachments ............. js/attachments.js
+    J12 Production notes ........ docs/PRODUCTION.md  (read before launch)
+    Main entry .................. js/main.js (imports J10 boot; new in 1.8.0)
+
+  GOING LIVE  (see J1 CONFIG and J5)
+    1. Get an API key from your provider's dashboard (Sarvam, OpenAI, ...).
+    2. Add a small serverless proxy that holds the key. NEVER put a key in
+       this file — everything here is public. The browser calls YOUR
+       endpoint; your endpoint calls the provider.
+    3. Set CONFIG.mode = "api" and point CONFIG.apiBase at that endpoint.
+
+    The proxy must expose exactly two routes:
+      POST /chat  { message, history[] }              → { reply, thoughts[] }
+      POST /tts   { text, lang, voice, model }        → audio bytes
+
+    STT stays in the browser by default (free, private, no round trip).
+    Swap it for a server call later if you need better accuracy — see J7.
+  ════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#0a0a0b">
+<meta name="description" content="Thoshan's portfolio assistant — a voice-enabled AI chatbot.">
+<title>Thoshan · Portfolio Assistant</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='42' fill='%23e8703a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/layout.css">
+<link rel="stylesheet" href="styles/sidebar.css">
+<link rel="stylesheet" href="styles/topbar.css">
+<link rel="stylesheet" href="styles/thread.css">
+<link rel="stylesheet" href="styles/composer.css">
+<link rel="stylesheet" href="styles/call.css">
+<link rel="stylesheet" href="styles/overlays.css">
+<link rel="stylesheet" href="styles/motion.css">
+<link rel="stylesheet" href="styles/responsive.css">
+</head>
+<body>
+
+<!-- ============================================================
+     H1 · ICON SPRITE
+     Split → partials/icons.html
+     Every icon is a <symbol>, referenced as <use href="#id"/>.
+     Add new icons here, never as an inline <svg> mid-page.
+     ============================================================ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- the brand mark: a five-petal lotus -->
+    <radialGradient id="lotusGrad" cx="50%" cy="62%" r="62%">
+      <stop offset="0%" stop-color="#f8c07a"/>
+      <stop offset="52%" stop-color="#ea7b3c"/>
+      <stop offset="100%" stop-color="#cf4a24"/>
+    </radialGradient>
+  </defs>
+  <symbol id="i-lotus" viewBox="0 0 100 100">
+    <g fill="url(#lotusGrad)">
+      <path d="M50 9 C57.5 25 57.5 39 50 50 C42.5 39 42.5 25 50 9 Z"/>
+      <path d="M50 9 C57.5 25 57.5 39 50 50 C42.5 39 42.5 25 50 9 Z" transform="rotate(72 50 50)"/>
+      <path d="M50 9 C57.5 25 57.5 39 50 50 C42.5 39 42.5 25 50 9 Z" transform="rotate(144 50 50)"/>
+      <path d="M50 9 C57.5 25 57.5 39 50 50 C42.5 39 42.5 25 50 9 Z" transform="rotate(216 50 50)"/>
+      <path d="M50 9 C57.5 25 57.5 39 50 50 C42.5 39 42.5 25 50 9 Z" transform="rotate(288 50 50)"/>
+    </g>
+  </symbol>
+
+  <!-- chrome / navigation -->
+  <!-- asymmetric hamburger: three rules of different lengths -->
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 6.5h9.5M3.5 12h17M3.5 17.5h6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H4.5M11 5.5 4.5 12 11 18.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-newchat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8.4 8.4 0 0 1-11.9 7.6L3.5 20.5l1.5-4.9A8.4 8.4 0 1 1 20.5 11.5Z"/><path d="M12 8.2v6.6M8.7 11.5h6.6"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="3.2"/><path d="M9.5 4.5v15"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 8.4a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+
+  <!-- chat message actions -->
+  <symbol id="i-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6.5 8.8H3.5v6.4h3L11 19V5Z"/><path d="M15.2 8.8a4.5 4.5 0 0 1 0 6.4M18 6a8.4 8.4 0 0 1 0 12"/></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6.5 8.8H3.5v6.4h3L11 19V5Z"/><path d="m16 9.5 5 5m0-5-5 5"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20V10l4.2-7a2.2 2.2 0 0 1 3.6 2.4L13.6 9H18a2 2 0 0 1 2 2.4l-1.4 6A2.6 2.6 0 0 1 16 19.5H7Z"/><path d="M7 20H4.5v-9.5H7"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 4v10l-4.2 7a2.2 2.2 0 0 1-3.6-2.4L10.4 15H6a2 2 0 0 1-2-2.4l1.4-6A2.6 2.6 0 0 1 8 4.5h9Z"/><path d="M17 4h2.5v9.5H17"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11.5" height="11.5" rx="2.6"/><path d="M6.5 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1.5"/></symbol>
+
+  <!-- composer -->
+  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6"/></symbol>
+  <symbol id="i-micoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6M4 4l16 16"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="2.4"/></symbol>
+  <symbol id="i-photo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.6"/><circle cx="8.6" cy="10" r="1.8"/><path d="m4 17 5-5 4.2 4.2L16 13.5l4 4"/><path d="M19.5 4.5 21 3M20.7 6.3h1.8"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5A2 2 0 0 1 5.5 6.5h2l1.3-2h6.4l1.3 2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.4"/></symbol>
+
+  <!-- chat management -->
+  <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3.5 20.5 8.5l-3 1-2.6 5.6-3.6-3.6L5.7 14.1 4 12.4l2.6-5.6 1-3 4.9 4.9Z"/><path d="M4.5 19.5 9 15"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20Z"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5V4M8 7.5 12 3.5l4 4"/><path d="M5 13v5.5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V13"/></symbol>
+  <symbol id="i-id" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.6"/><circle cx="8.5" cy="11" r="2"/><path d="M5.5 16c.6-1.5 1.7-2.2 3-2.2s2.4.7 3 2.2M14.5 10h4M14.5 13.5h3"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h15M9 6.5V4.8A1.3 1.3 0 0 1 10.3 3.5h3.4A1.3 1.3 0 0 1 15 4.8v1.7M6.5 6.5l.9 12.2a2 2 0 0 0 2 1.8h5.2a2 2 0 0 0 2-1.8l.9-12.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9Z"/><path d="M13.5 3.5V9H19"/></symbol>
+
+  <!-- voice call -->
+  <symbol id="i-headset" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 14.5v-2.3a7.8 7.8 0 0 1 15.6 0v2.3"/><rect x="2.4" y="13.6" width="4.2" height="7.2" rx="2.1"/><rect x="17.4" y="13.6" width="4.2" height="7.2" rx="2.1"/></symbol>
+  <symbol id="i-hangup" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.6h3l1.5 4-2 1.4a12.5 12.5 0 0 0 6 6l1.4-2 4 1.5v3a2 2 0 0 1-2.2 2A16.6 16.6 0 0 1 4.5 5.8 2 2 0 0 1 6.5 3.6Z" transform="rotate(133 12 12)"/></symbol>
+  <symbol id="i-voloff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6.5 8.8H3.5v6.4h3L11 19V5Z"/><path d="m15.5 9.5 5 5m0-5-5 5"/></symbol>
+</svg>
+
+<div class="app">
+  <div class="scrim" id="scrim"></div>
+
+  <!-- ============================================================
+       H2 · SIDEBAR
+       Split → partials/sidebar.html
+       Off-canvas on mobile, fixed column at ≥1024px.
+       ============================================================ -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigation">
+    <div class="brand">
+      <svg class="brand__logo" viewBox="0 0 100 100" aria-hidden="true"><use href="#i-lotus"/></svg>
+      <div class="brand__meta">
+        <div class="brand__name">Thoshan</div>
+        <div class="brand__sub">Portfolio Assistant</div>
+      </div>
+      <!-- Collapses the sidebar to an icon rail on desktop; closes the
+           drawer on mobile. State is persisted in settings. -->
+      <button class="icon-btn sidebar__toggle" id="sidebarToggle"
+              aria-label="Collapse sidebar" aria-expanded="true">
+        <svg width="19" height="19"><use href="#i-panel"/></svg>
+      </button>
+    </div>
+
+    <nav class="nav">
+      <button class="nav__item" data-new-chat title="New chat"><svg width="20" height="20"><use href="#i-plus"/></svg><span>New chat</span></button>
+    </nav>
+
+    <!-- Search is its own tile so it reads as a destination, not decoration -->
+    <button class="search-tile" id="searchBtn">
+      <svg width="19" height="19"><use href="#i-search"/></svg>
+      <span class="search-tile__label">Search chats</span>
+      <span class="search-tile__hint">title or content</span>
+    </button>
+
+    <div class="recent">
+      <div class="recent__head"><span>Recent chats</span></div>
+      <!-- filled by J6 renderChatList(). Chats with no messages are never listed. -->
+      <div class="recent__list" id="chatList"></div>
+    </div>
+
+    <div class="sidebar__foot">
+      <span class="avatar">T</span>
+      <span class="name">Thoshan</span>
+      <button class="icon-btn" id="settingsBtn" aria-label="Settings"><svg width="19" height="19"><use href="#i-gear"/></svg></button>
+    </div>
+  </aside>
+
+  <!-- ============================================================
+       H3 · MAIN · TOPBAR
+       Split → partials/topbar.html
+       Two modes, switched by J6 renderTopbar():
+         normal → menu · title · [call] [ new-chat | kebab ]   ← one pill
+         bare   → menu · [call]                                ← fresh chat
+       ============================================================ -->
+  <div class="main">
+    <header class="topbar" id="topbar">
+      <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu"><svg width="22" height="22"><use href="#i-menu"/></svg></button>
+      <h1 class="topbar__title" id="chatTitle">New Chat</h1>
+
+      <div class="topbar__right">
+        <button class="pill-btn" id="callBtn" aria-label="Start voice call" title="Voice call"><svg width="19" height="19"><use href="#i-headset"/></svg></button>
+
+        <!-- new chat + kebab share ONE pill -->
+        <div class="split-pill">
+          <button class="split-pill__btn" data-new-chat aria-label="New chat" title="New chat"><svg width="19" height="19"><use href="#i-newchat"/></svg></button>
+          <button class="split-pill__btn" id="kebabBtn" aria-label="Chat options" aria-haspopup="true" aria-expanded="false"><svg width="19" height="19"><use href="#i-dots"/></svg></button>
+        </div>
+      </div>
+
+      <div class="menu" id="kebabMenu" role="menu" hidden>
+        <button class="menu__item" role="menuitem" id="menuSearch"><svg width="19" height="19"><use href="#i-search"/></svg>Search chats</button>
+        <button class="menu__item" role="menuitem" id="pinChat"><svg width="19" height="19"><use href="#i-pin"/></svg><span id="pinLabel">Pin chat</span></button>
+        <button class="menu__item" role="menuitem" id="renameChat"><svg width="19" height="19"><use href="#i-pencil"/></svg>Rename chat</button>
+        <button class="menu__item" role="menuitem" id="sharePdf"><svg width="19" height="19"><use href="#i-share"/></svg>Share chat as PDF</button>
+        <button class="menu__item" role="menuitem" id="copySession"><svg width="19" height="19"><use href="#i-id"/></svg>Copy session ID</button>
+      </div>
+    </header>
+
+    <!-- ============================================================
+         H4 · THREAD + COMPOSER
+         Split → partials/chat.html
+         ============================================================ -->
+    <div class="thread" id="thread" role="log" aria-live="polite" aria-label="Conversation">
+      <div class="thread__inner" id="threadInner"></div>
+    </div>
+
+    <div class="composer-wrap">
+      <form class="composer" id="composer" autocomplete="off">
+        <!-- previews of files picked but not yet sent (J11), inside the box -->
+        <div class="attach-preview" id="attachPreview" hidden></div>
+
+        <div class="composer__row">
+          <button type="button" class="icon-round" id="attachBtn" aria-label="Attach files" aria-haspopup="true" aria-expanded="false"><svg width="22" height="22"><use href="#i-plus"/></svg></button>
+          <input type="file" id="fileInput" hidden multiple>
+
+          <textarea class="composer__input" id="input" rows="1" placeholder="Ask anything..." aria-label="Message"></textarea>
+
+          <div class="recorder" id="recorder" hidden>
+            <div class="wave" id="wave" aria-hidden="true"></div>
+            <span class="timer" id="timer">0:00/0:30</span>
+          </div>
+
+          <button type="button" class="icon-round mic" id="micBtn" aria-label="Start voice input"><svg width="22" height="22"><use href="#i-mic"/></svg></button>
+          <button type="button" class="stop" id="stopBtn" hidden aria-label="Stop recording"><i></i></button>
+          <button type="submit" class="send" id="sendBtn" hidden aria-label="Send"><svg width="21" height="21"><use href="#i-send"/></svg></button>
+        </div>
+
+        <!-- the + opens a small menu, like a phone's attach sheet.
+             Anchored to .composer so it lines up with the + button. -->
+        <div class="attach-pop" id="attachPop" hidden>
+          <button class="menu__item" data-attach="image"><svg width="19" height="19"><use href="#i-photo"/></svg>Photos</button>
+          <button class="menu__item" data-attach="camera"><svg width="19" height="19"><use href="#i-camera"/></svg>Take photo</button>
+          <button class="menu__item" data-attach="file"><svg width="19" height="19"><use href="#i-file"/></svg>Files</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     H5 · VOICE CALL  (full screen)
+     Split → partials/call.html
+     ============================================================ -->
+<div class="call" id="call" data-state="idle" aria-hidden="true" role="dialog" aria-label="Voice call">
+  <div class="call__top">
+    <div class="call__who">
+      <div class="call__name">Thoshan's Assistant</div>
+      <div class="call__status" id="callStatus">Connecting…</div>
+    </div>
+    <div class="call__timer" id="callTimer">00:00</div>
+  </div>
+
+  <div class="call__body">
+    <div class="orb">
+      <span class="orb__ring"></span><span class="orb__ring"></span><span class="orb__ring"></span>
+      <div class="orb__core"><svg viewBox="0 0 100 100"><use href="#i-lotus"/></svg></div>
+    </div>
+    <div class="wave call__wave" id="callWave" aria-hidden="true"></div>
+    <div class="call__caption">
+      <div class="call__lines" id="callLines"></div>
+      <div class="call__live" id="callLive" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <div class="call__controls">
+    <div class="ctl-wrap">
+      <button class="ctl" id="ctlMute" aria-label="Mute microphone" aria-pressed="false"><svg width="24" height="24"><use href="#i-mic"/></svg></button>
+      <span class="ctl__label">Mute</span>
+    </div>
+    <div class="ctl-wrap">
+      <button class="ctl ctl--end" id="ctlEnd" aria-label="End call"><svg width="26" height="26"><use href="#i-hangup"/></svg></button>
+      <span class="ctl__label">End</span>
+    </div>
+    <div class="ctl-wrap">
+      <button class="ctl" id="ctlSpeaker" aria-label="Speaker" aria-pressed="false"><svg width="24" height="24"><use href="#i-speaker"/></svg></button>
+      <span class="ctl__label">Speaker</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     H6 · SEARCH CHATS  (dedicated full-screen page)
+     Split → partials/search.html
+     Same shell as Settings so both feel like real pages.
+     Matches chat titles AND message text — see J9.
+     ============================================================ -->
+<div class="screen" id="searchScreen" hidden>
+  <header class="screen__bar">
+    <button class="icon-btn" data-close-screen aria-label="Back"><svg width="21" height="21"><use href="#i-back"/></svg></button>
+    <h2>Search chats</h2>
+  </header>
+
+  <div class="screen__body">
+    <p class="screen__hint">Find a past conversation by its title, or by something said in it.</p>
+    <label class="search-field">
+      <svg width="19" height="19"><use href="#i-search"/></svg>
+      <input id="searchInput" type="search" placeholder="Search chats" autocomplete="off" aria-label="Search chats">
+    </label>
+    <!-- filled by J9 renderResults() -->
+    <div class="result-list" id="searchResults"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     H7 · SETTINGS  (full-screen page)
+     Split → partials/settings.html
+     ============================================================ -->
+<div class="screen" id="settingsScreen" hidden>
+  <header class="screen__bar">
+    <button class="icon-btn" data-close-screen aria-label="Back"><svg width="21" height="21"><use href="#i-back"/></svg></button>
+    <h2>Settings</h2>
+  </header>
+
+  <div class="screen__body">
+    <div class="card group">
+      <div class="group__title">Voice &amp; language</div>
+      <div class="row">
+        <span class="row__label">Speak replies aloud<small>Read every answer out with text-to-speech</small></span>
+        <button class="switch" id="swAutospeak" role="switch" aria-label="Speak replies aloud"></button>
+      </div>
+      <div class="row">
+        <span class="row__label">Hands-free voice chat<small>Start listening again as soon as the reply ends</small></span>
+        <button class="switch" id="swHandsfree" role="switch" aria-label="Hands-free voice chat"></button>
+      </div>
+      <div class="row">
+        <span class="row__label">Thinking trace<small>Show the "Thoughts" panel on replies</small></span>
+        <button class="switch" id="swThoughts" role="switch" aria-label="Thinking trace"></button>
+      </div>
+      <div class="row">
+        <span class="row__label">Voice language<small>Used for speech recognition and playback</small></span>
+        <select class="field" id="langSelect" style="width:158px" aria-label="Voice language">
+          <option value="en-IN">English (India)</option>
+          <option value="hi-IN">हिन्दी (Hindi)</option>
+          <option value="kn-IN">ಕನ್ನಡ (Kannada)</option>
+          <option value="ta-IN">தமிழ் (Tamil)</option>
+          <option value="te-IN">తెలుగు (Telugu)</option>
+          <option value="mr-IN">मराठी (Marathi)</option>
+          <option value="bn-IN">বাংলা (Bengali)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card group">
+      <div class="group__title">Appearance</div>
+      <div class="seg" id="themeSeg" role="tablist" aria-label="Appearance">
+        <button class="seg__btn" role="tab" data-theme-val="light"><svg width="17" height="17"><use href="#i-check"/></svg>Light</button>
+        <button class="seg__btn" role="tab" data-theme-val="dark"><svg width="17" height="17"><use href="#i-check"/></svg>Dark</button>
+        <button class="seg__btn" role="tab" data-theme-val="system"><svg width="17" height="17"><use href="#i-check"/></svg>System</button>
+      </div>
+    </div>
+
+    <div class="card group">
+      <div class="group__title">About</div>
+      <button class="about__row" id="copyContact">
+        <span class="about__k">Contact</span>
+        <span class="about__v" id="contactValue">detu.glowworm706@aleeas.com</span>
+      </button>
+      <div class="about__row">
+        <span class="about__k">Version</span>
+        <span class="about__v">1.8.0 · split</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     H8 · MODALS + TOAST
+     Split → partials/modals.html
+     ============================================================ -->
+<div class="modal" id="renameModal" hidden>
+  <div class="modal__bg" data-close-modal></div>
+  <div class="modal__card" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+    <h3 id="renameTitle">Rename chat</h3>
+    <input class="field" id="renameInput" placeholder="Chat name" maxlength="60">
+    <div class="modal__row">
+      <button class="btn btn--ghost" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="renameSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><svg width="17" height="17"><use href="#i-check"/></svg><span id="toastMsg"></span></div>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

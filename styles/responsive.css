@@ -1,0 +1,43 @@
+/* Split → styles/responsive.css — C11 (extracted verbatim from index.html 1.7.0; do not reorder) */
+/* ============================================================
+   C11 · RESPONSIVE
+   Split → styles/responsive.css
+   ============================================================ */
+@media (min-width:1024px){
+  .app{grid-template-columns:var(--sidebar-w) 1fr}
+  .sidebar{position:relative;transform:none;width:var(--sidebar-w);z-index:1;height:100%}
+  .scrim{display:none}
+  .menu-btn{display:none}
+  .thread{padding:10px 24px 24px}
+  .topbar{padding:14px 24px 12px}
+  .menu{right:24px}
+  .call__body{gap:32px}
+  .orb{width:224px;height:224px}
+  .orb__core{width:152px;height:152px}
+}
+
+/* --- collapsed sidebar: a narrow icon rail, like the reference ---
+   Labels, the history list and the account name are hidden; every control
+   stays reachable as an icon. The toggle is the only way back, so it stays
+   visible in both states. */
+@media (min-width:1024px){
+  .app.collapsed{grid-template-columns:var(--sidebar-rail) 1fr}
+  .app.collapsed .sidebar{width:var(--sidebar-rail);padding:12px 8px calc(10px + var(--safe-b))}
+  .app.collapsed .brand{flex-direction:column;gap:10px;padding:9px 0 14px}
+  .app.collapsed .brand__meta{display:none}
+  .app.collapsed .sidebar__toggle{margin:0}
+  .app.collapsed .nav{padding:10px 0 12px}
+  .app.collapsed .nav__item{justify-content:center;padding:11px 0}
+  .app.collapsed .nav__item span{display:none}
+  .app.collapsed .search-tile{justify-content:center;padding:14px 0;margin:12px 0 4px}
+  .app.collapsed .search-tile__label,
+  .app.collapsed .search-tile__hint{display:none}
+  .app.collapsed .recent{display:none}
+  .app.collapsed .sidebar__foot{flex-direction:column;gap:6px;padding:10px 0 0}
+  .app.collapsed .sidebar__foot .name{display:none}
+}
+@media (min-width:1024px) and (max-width:1180px){:root{--sidebar-w:250px}}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
+  .welcome__logo{animation:none}
+}

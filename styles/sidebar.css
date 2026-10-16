@@ -1,0 +1,52 @@
+/* Split → styles/sidebar.css — C4 (extracted verbatim from index.html 1.7.0; do not reorder) */
+/* ============================================================
+   C4 · SIDEBAR
+   Split → styles/sidebar.css
+   ============================================================ */
+.sidebar{
+  position:fixed;inset:0 auto 0 0;width:min(var(--sidebar-w),86vw);
+  background:var(--bg-soft);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;z-index:60;
+  transform:translateX(-102%);transition:transform .38s var(--ease);
+  padding:12px 10px calc(10px + var(--safe-b));will-change:transform;
+}
+.sidebar.open{transform:translateX(0)}
+
+/* brand header — who this assistant belongs to */
+.brand{display:flex;align-items:center;gap:11px;padding:9px 10px 14px}
+.brand__logo{width:34px;height:34px;flex:0 0 34px}
+.brand__meta{min-width:0;flex:1}
+.brand__name{font-size:14px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand__sub{font-size:11.5px;color:var(--text-faint);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* collapse / expand control — desktop only, see C11 for the rail state */
+.sidebar__toggle{margin-left:auto;flex:0 0 auto}
+
+.nav{padding:10px 4px 12px;border-bottom:1px solid var(--border)}
+.nav__item{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border-radius:10px;font-size:14px;font-weight:500;color:var(--text);transition:background .16s ease;text-align:left}
+.nav__item svg{color:var(--text-dim);flex:0 0 auto;transition:color .16s ease}
+.nav__item:hover{background:var(--surface-2)}
+.nav__item:hover svg{color:var(--text)}
+
+/* Search is a full-width TILE, not a tiny icon — easy to spot at a glance. */
+.search-tile{display:flex;align-items:center;gap:12px;width:100%;margin:12px 0 4px;padding:13px 14px;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-size:14px;font-weight:600;text-align:left;transition:background .16s ease,border-color .16s ease,transform .12s ease}
+.search-tile:hover{background:var(--surface-3);border-color:var(--border-strong)}
+.search-tile:active{transform:scale(.985)}
+.search-tile svg{color:var(--text-dim);flex:0 0 auto}
+.search-tile__label{flex:1;min-width:0}
+.search-tile__hint{font-size:11.5px;color:var(--text-faint);font-weight:500}
+
+.recent{padding:12px 4px 4px;flex:1;min-height:0;display:flex;flex-direction:column}
+.recent__head{display:flex;align-items:center;justify-content:space-between;padding:0 10px 8px;color:var(--text-faint);font-size:12px;font-weight:600}
+.recent__list{overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:1px;padding-bottom:6px}
+.chat-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:9px 10px;border-radius:10px;font-size:13.5px;color:var(--text-dim);transition:background .16s ease,color .16s ease}
+.chat-item:hover,.chat-item.active{background:var(--surface-2);color:var(--text)}
+.chat-item__title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-item__pin{color:var(--accent);flex:0 0 auto}
+.chat-item__del{flex:0 0 auto;color:var(--text-faint);opacity:0;transition:opacity .16s ease;display:grid;place-items:center;padding:3px;border-radius:6px}
+.chat-item:hover .chat-item__del{opacity:1}
+.chat-item__del:hover{color:var(--danger);background:var(--accent-dim)}
+.sidebar__empty{color:var(--text-faint);font-size:12.5px;padding:8px 12px;line-height:1.5}
+.sidebar__foot{border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:10px 8px 0;margin-top:4px}
+.avatar{width:34px;height:34px;flex:0 0 34px;border-radius:50%;background:linear-gradient(140deg,#7ee787,#3fb950);display:grid;place-items:center;font-weight:700;font-size:13px;color:#06210f}
+.sidebar__foot .name{flex:1;font-size:13.5px;font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

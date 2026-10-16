@@ -1,0 +1,29 @@
+/* Split → styles/topbar.css — C5 (extracted verbatim from index.html 1.7.0; do not reorder) */
+/* ============================================================
+   C5 · TOPBAR & MENUS
+   Split → styles/topbar.css
+   ============================================================ */
+.topbar{
+  display:flex;align-items:center;gap:10px;
+  padding:calc(10px + var(--safe-t)) 12px 10px;
+  position:relative;z-index:20;
+  background:linear-gradient(to bottom,var(--fade-top),var(--fade-top-2) 70%,transparent);
+  backdrop-filter:blur(8px);
+}
+.topbar__title{flex:1;min-width:0;font-size:17px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar__right{display:flex;align-items:center;gap:8px;margin-left:auto}
+/* bare = fresh chat: nothing to manage yet, so only the call affordance shows */
+.topbar--bare .topbar__title{display:none}
+.topbar--bare .split-pill{display:none}
+
+/* One pill holding BOTH chat actions — new chat and the kebab sit together
+   in a single rounded container, with the call button beside it. */
+.split-pill{display:flex;align-items:center;gap:2px;padding:3px;background:var(--surface-2);border:1px solid var(--border);border-radius:999px}
+.split-pill__btn{width:37px;height:32px;border-radius:999px;display:grid;place-items:center;color:var(--text-dim);transition:background .16s ease,color .16s ease,transform .12s ease}
+.split-pill__btn:hover{background:var(--surface-3);color:var(--text)}
+.split-pill__btn:active{transform:scale(.94)}
+
+.menu{position:absolute;top:calc(100% + 4px);right:12px;min-width:238px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:16px;padding:6px;z-index:40;box-shadow:0 20px 50px rgba(0,0,0,.35);transform-origin:top right;animation:popIn .18s var(--ease)}
+.menu__item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:11px 12px;border-radius:11px;font-size:14px;font-weight:500;color:var(--text);transition:background .14s ease}
+.menu__item:hover{background:var(--surface-3)}
+.menu__item svg{color:var(--text-dim);flex:0 0 auto}

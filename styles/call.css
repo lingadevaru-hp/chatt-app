@@ -1,0 +1,43 @@
+/* Split → styles/call.css — C8 (extracted verbatim from index.html 1.7.0; do not reorder) */
+/* ============================================================
+   C8 · VOICE CALL
+   Split → styles/call.css
+   ============================================================ */
+.call{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;background:radial-gradient(900px 620px at 50% 24%, var(--call-glow-1), transparent 62%),radial-gradient(760px 520px at 50% 96%, var(--call-glow-2), transparent 60%),var(--call-bg);opacity:0;pointer-events:none;visibility:hidden;transition:opacity .32s ease,visibility .32s ease}
+.call.show{opacity:1;pointer-events:auto;visibility:visible}
+.call__top{display:flex;align-items:center;gap:12px;padding:calc(16px + var(--safe-t)) 20px 0;max-width:560px;width:100%;margin:0 auto}
+.call__who{flex:1;min-width:0}
+.call__name{font-size:15px;font-weight:600}
+.call__status{font-size:12.5px;color:var(--text-dim);margin-top:3px;transition:color .25s ease}
+.call[data-state="listening"] .call__status{color:var(--accent-soft)}
+.call[data-state="speaking"] .call__status{color:var(--accent)}
+.call__timer{font-family:var(--mono);font-size:13px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.call__body{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;padding:18px}
+.orb{position:relative;width:196px;height:196px;display:grid;place-items:center;flex:0 0 auto}
+.orb__ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(232,112,58,.42);opacity:0}
+.orb__core{width:134px;height:134px;border-radius:50%;background:var(--orb-core);border:1px solid var(--border-strong);display:grid;place-items:center;transition:transform .45s var(--ease),box-shadow .45s ease,border-color .3s ease}
+.orb__core svg{width:58px;height:58px;display:block}
+.call[data-state="listening"] .orb__core{border-color:rgba(232,112,58,.5)}
+.call[data-state="listening"] .orb__ring{animation:pulseOut 2.7s ease-out infinite}
+.call[data-state="listening"] .orb__ring:nth-child(2){animation-delay:.9s}
+.call[data-state="listening"] .orb__ring:nth-child(3){animation-delay:1.8s}
+.call[data-state="speaking"] .orb__core{transform:scale(1.07);border-color:rgba(232,112,58,.9);box-shadow:0 0 52px rgba(232,112,58,.32),inset 0 0 34px rgba(232,112,58,.15)}
+.call[data-state="thinking"] .orb__core{transform:scale(.95)}
+.call[data-state="thinking"] .orb__core svg{animation:spin 1.7s linear infinite}
+.call[data-state="connecting"] .orb__core{transform:scale(.94);opacity:.7}
+.call__wave{flex:0 0 auto;width:min(340px,72%);height:36px}
+.call__caption{width:100%;max-width:520px;min-height:96px;max-height:38vh;display:flex;flex-direction:column;gap:9px;justify-content:flex-end;text-align:center}
+.call__lines{display:flex;flex-direction:column;gap:9px}
+.call__line{font-size:15px;line-height:1.55;animation:fadeUp .4s var(--ease) both;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+.call__line--user{color:var(--text-faint);-webkit-line-clamp:2}
+.call__line--bot{color:var(--text);-webkit-line-clamp:3}
+.call__live{font-size:14px;line-height:1.5;color:var(--accent-soft);font-style:italic;min-height:20px}
+.call__controls{display:flex;align-items:flex-start;justify-content:center;gap:26px;padding:0 20px calc(34px + var(--safe-b))}
+.ctl-wrap{display:flex;flex-direction:column;align-items:center;gap:9px}
+.ctl{width:60px;height:60px;border-radius:50%;display:grid;place-items:center;background:var(--surface-2);border:1px solid var(--border);color:var(--text);transition:background .16s ease,transform .12s ease,color .16s ease}
+.ctl:hover{background:var(--surface-3)}
+.ctl:active{transform:scale(.93)}
+.ctl.off{background:var(--surface-3);color:var(--text-faint)}
+.ctl--end{width:72px;height:72px;background:var(--danger);border-color:transparent;color:var(--danger-ink)}
+.ctl--end svg{width:26px;height:26px}
+.ctl__label{font-size:11px;color:var(--text-faint);letter-spacing:.05em;text-transform:uppercase;font-weight:600}

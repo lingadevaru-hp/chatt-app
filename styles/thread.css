@@ -1,0 +1,78 @@
+/* Split → styles/thread.css — C6 (extracted verbatim from index.html 1.7.0; do not reorder) */
+/* ============================================================
+   C6 · CHAT THREAD
+   Split → styles/thread.css
+   ============================================================ */
+.thread{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px 16px 20px;scroll-behavior:smooth;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.thread__inner{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:20px;min-height:100%}
+
+/* --- new-chat screen: the mark and one line. Nothing else ---
+   Two elements only, so nothing competes with the composer or with
+   what the visitor came here to do. */
+/* flex:1 + min-height:100% on the parent keeps this optically centred
+   even though it now holds only two elements. */
+.welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px 16px 40px;animation:fadeUp .6s var(--ease) both}
+.welcome__logo{width:84px;height:84px;margin-bottom:36px;animation:floaty 6s ease-in-out infinite}
+.welcome__title{font-family:var(--serif);font-size:clamp(32px,9.5vw,54px);font-weight:400;letter-spacing:-.015em;margin:0;line-height:1.06;max-width:14ch}
+
+.msg{display:flex;flex-direction:column;animation:fadeUp .42s var(--ease) both}
+.msg--user{align-items:flex-end;gap:6px}
+.msg--bot{align-items:flex-start;gap:8px}
+.bubble{background:var(--surface-2);border:1px solid var(--border);padding:11px 15px;border-radius:18px 18px 6px 18px;font-size:15px;line-height:1.55;max-width:min(78%,560px);overflow-wrap:break-word;word-break:break-word}
+.msg--user .mini-actions{display:flex;gap:2px;opacity:0;transition:opacity .18s ease}
+.msg--user:hover .mini-actions{opacity:1}
+@media (hover:none){.msg--user .mini-actions{display:none}}
+
+.thoughts{display:inline-flex;align-items:center;gap:5px;color:var(--text-faint);font-size:13px;font-weight:500;padding:2px 0;transition:color .16s ease}
+.thoughts:hover{color:var(--text-dim)}
+.thoughts svg{transition:transform .28s var(--ease)}
+.thoughts[aria-expanded="true"] svg{transform:rotate(90deg)}
+.thoughts__body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .34s var(--ease);width:100%}
+.thoughts__body.open{grid-template-rows:1fr}
+.thoughts__inner{overflow:hidden;min-height:0}
+.thoughts__card{border-left:2px solid var(--accent-dim);margin:8px 0 4px;padding:2px 0 2px 14px;display:flex;flex-direction:column;gap:9px}
+.thought-step{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--text-dim);line-height:1.5}
+.thought-step__dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:0 0 6px;margin-top:7px;box-shadow:0 0 0 3px var(--accent-dim)}
+.thought-step__t{color:var(--text-faint);font-family:var(--mono);font-size:11px;margin-left:4px}
+
+.reply{font-size:15.5px;line-height:1.68;color:var(--text);width:100%;max-width:660px;overflow-wrap:break-word;min-width:0}
+.reply p{margin:0 0 10px}
+.reply p:last-child{margin-bottom:0}
+.reply ul{margin:6px 0 10px;padding-left:20px}
+.reply li{margin:4px 0}
+.reply strong{color:var(--text);font-weight:700}
+.reply code{font-family:var(--mono);font-size:.88em;background:var(--surface-3);padding:2px 6px;border-radius:6px}
+
+/* --- rich content in replies: tables, code, links, math ---
+   Mobile-safe: wide tables and long code scroll horizontally inside
+   their own box, so the page itself never overflows. */
+.reply .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:10px 0 14px;border:1px solid var(--border);border-radius:12px}
+.reply table{width:100%;border-collapse:collapse;font-size:14px}
+.reply th,.reply td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+.reply thead th{background:var(--surface-2);font-weight:600;font-size:12px;letter-spacing:.03em;text-transform:uppercase;color:var(--text-dim)}
+.reply tbody tr:last-child td{border-bottom:0}
+.reply tbody tr:nth-child(even) td{background:var(--surface-2)}
+.reply a{color:var(--accent);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
+.reply .code-block{margin:10px 0 14px;background:var(--surface-3);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.reply .code-block__bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 6px 5px 14px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-faint);font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.reply .code-block pre{margin:0;padding:13px 14px;overflow-x:auto}
+.reply .code-block code{background:none;padding:0;font-size:13px;line-height:1.65;white-space:pre}
+.reply .math{font-family:var(--mono);background:var(--surface-2);border:1px solid var(--border);padding:1px 6px;border-radius:6px;font-size:.9em;white-space:nowrap}
+.reply .math-block{display:block;font-family:var(--mono);background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0 14px;text-align:center;overflow-x:auto;font-size:13.5px}
+.caret{display:inline-block;width:7px;height:1.05em;background:var(--accent);vertical-align:-2px;margin-left:2px;animation:blink 1s steps(2) infinite;border-radius:1px}
+
+.actions{display:flex;align-items:center;gap:2px;margin-top:2px}
+.act{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--text-dim);transition:background .16s ease,color .16s ease,transform .12s ease;position:relative}
+.act:hover{background:var(--surface-2);color:var(--text)}
+.act:active{transform:scale(.9)}
+.act.on{color:var(--accent);background:var(--accent-dim)}
+.act.on--down{color:var(--danger);background:var(--accent-dim)}
+.act.speaking{color:var(--accent)}
+.act.speaking::after{content:"";position:absolute;inset:2px;border-radius:9px;border:1.5px solid var(--accent);animation:ring 1.4s ease-out infinite}
+
+.typing{display:flex;align-items:center;gap:10px;color:var(--text-faint);font-size:13px}
+.typing__spinner{width:22px;height:22px;animation:spin 1.6s linear infinite}
+.dots{display:inline-flex;gap:4px;align-items:center}
+.dots i{width:5px;height:5px;border-radius:50%;background:var(--text-faint);animation:bounce 1.2s ease-in-out infinite}
+.dots i:nth-child(2){animation-delay:.15s}
+.dots i:nth-child(3){animation-delay:.3s}

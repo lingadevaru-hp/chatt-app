@@ -1,0 +1,22 @@
+/* Split → styles/base.css — C2 (extracted verbatim from index.html 1.7.0; do not reorder) */
+/* ============================================================
+   C2 · RESET & BASE
+   Split → styles/base.css
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{height:100%;overflow:hidden}
+body{
+  margin:0;font-family:var(--font);background:var(--bg);color:var(--text);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  overscroll-behavior:none;
+  transition:background .25s ease,color .25s ease;
+}
+button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+input,textarea,select{font-family:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:20px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--text-faint);background-clip:content-box;border:3px solid transparent}
+::-webkit-scrollbar-track{background:transparent}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}

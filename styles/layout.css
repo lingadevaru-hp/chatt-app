@@ -1,0 +1,24 @@
+/* Split → styles/layout.css — C3 (extracted verbatim from index.html 1.7.0; do not reorder) */
+/* ============================================================
+   C3 · LAYOUT SHELL
+   Split → styles/layout.css
+   ============================================================ */
+.app{
+  display:grid;grid-template-columns:1fr;
+  height:100vh;height:100dvh;overflow:hidden;position:relative;
+  background:
+    radial-gradient(1100px 520px at 78% -8%, var(--glow-1), transparent 62%),
+    radial-gradient(900px 480px at 8% 108%, var(--glow-2), transparent 60%),
+    var(--bg);
+}
+.main{display:flex;flex-direction:column;min-width:0;height:100%;min-height:0;position:relative;overflow:hidden}
+.scrim{position:fixed;inset:0;background:var(--scrim);backdrop-filter:blur(2px);z-index:55;opacity:0;pointer-events:none;transition:opacity .3s ease}
+.scrim.show{opacity:1;pointer-events:auto}
+
+/* generic building blocks reused across screens */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden}
+.icon-btn{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--text-dim);transition:background .16s ease,color .16s ease}
+.icon-btn:hover{background:var(--surface-2);color:var(--text)}
+.pill-btn{height:38px;padding:0 12px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--text);transition:background .16s ease,border-color .16s ease,transform .12s ease}
+.pill-btn:hover{background:var(--surface-3);border-color:var(--border-strong)}
+.pill-btn:active{transform:scale(.96)}
