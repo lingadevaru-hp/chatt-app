@@ -660,3 +660,28 @@ screen long after a reply finished. It now clears `src` and reloads.
 **TTS is roughly 10× everything else combined.** So the levers, in order:
 shorter spoken replies (the persona already says 1-3 sentences), never paying
 for silence (done), and the answer cache for repeats (already seeded).
+
+## 22 · TURNSTILE IS DORMANT, SO IT SHOULD BE SILENT (1.15.1)
+
+The Turnstile gate in `api/src/index.ts` is conditional on `TURNSTILE_SECRET`
+— unset means protection is off, and `verifyTurnstile()` returns true. That
+part is correct.
+
+But `GET /turnstile-config` returned the site key **unconditionally**, and the
+key IS set in `wrangler.toml`. So the frontend saw a non-empty key, loaded
+Cloudflare's Turnstile script, rendered an invisible widget and minted a token
+on **every page load** — for a check that never ran. A third-party request and
+a wasted challenge while protection was dormant.
+
+The handler now returns the site key only when the secret is set:
+
+    siteKey: c.env.TURNSTILE_SECRET ? (c.env.TURNSTILE_SITE_KEY || "") : ""
+
+Empty site key = `js/turnstile.js` renders nothing, and the script is never
+fetched. Verified both ways: secret set → key returned; secret unset → "".
+
+**Before setting `TURNSTILE_SECRET`**, note that sessions are HMAC-signed and
+bound to the client IP for one hour (`makeSession`/`checkSession` in
+`api/src/turnstile.ts`). Mobile IPs change — wifi to 5G, carrier NAT — so a
+session can go stale mid-visit. The frontend recovers by re-verifying on a 403,
+but that is an extra round trip on a phone. Worth watching after enabling.
