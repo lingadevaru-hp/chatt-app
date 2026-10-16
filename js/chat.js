@@ -304,7 +304,17 @@ import { $, $$, esc, icon, nowISO, sleep, formatReply, wireRich, plain, showToas
     sendBtn.hidden = !(input.value.trim().length > 0 || getPendingCount() > 0) || isRecording();
   }
 
-  input.addEventListener("input", () => { autoGrow(); updateSendState(); });
+  input.addEventListener("input", () => {
+    /* If the visitor empties the box, they have discarded the spoken capture,
+       so let them record again. Without this a mis-transcribed phrase traps
+       them: the mic stays hidden until they send, and the only escape is
+       editing text that was wrong in the first place. An empty box means no
+       capture to protect, so re-recording is legitimate. */
+    if (!input.value.trim()) resetVoiceTurn();
+    autoGrow();
+    updateMicState();
+    updateSendState();
+  });
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
   });
