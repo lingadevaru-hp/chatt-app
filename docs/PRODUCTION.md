@@ -484,3 +484,23 @@ both questions return `X-Cache: HIT` with **zero** provider calls.
 
 It cannot run at module load because the key includes the model, which comes
 from per-request env — hence the once-per-isolate guard in the `/chat` handler.
+
+### The seeding broke a passthrough test (1.13.1)
+
+`api/test/routes.test.ts` had a test asserting that `/chat` proxies to the
+provider, and it used `"hi"` as its message. Seeding made `"hi"` a cache HIT,
+so the provider was never reached and the assertion failed — the feature was
+working, the test asserted the old world.
+
+Fixed by asking something **unseeded** in that test, and adding the mirror
+test: the seeded questions must return `X-Cache: HIT` with **zero** provider
+calls on the very first ask.
+
+Two other tests in the same file also use `"hi"` and are safe as-is, because
+`guard()` runs *before* the cache lookup — so the no-key (500) and
+daily-ceiling (429) checks still fire first. Worth knowing before moving the
+cache lookup earlier.
+
+**The lesson, twice over now:** when a change starts intercepting requests,
+grep the tests for messages it now intercepts. PR #1 broke a schema test the
+same way.
