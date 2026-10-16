@@ -146,16 +146,20 @@ describe("system prompt shape", () => {
     expect(SYSTEM_PROMPT).toMatch(/never be his real ones/i);
   });
 
-  it("offers every Indian language", () => {
-    expect(SYSTEM_PROMPT).toMatch(/you speak every indian language/i);
+  it("offers 23 Indian languages, in their own script", () => {
+    expect(SYSTEM_PROMPT).toMatch(/you speak 23 indian languages/i);
     expect(SYSTEM_PROMPT).toMatch(/never make them switch to english/i);
+    expect(SYSTEM_PROMPT).toMatch(/in their own script, never romanised/i);
   });
 
   it("states the scope limit", () => {
     expect(SYSTEM_PROMPT).toMatch(/only talk about lingadevaru/i);
-    // Engage lightly, then redirect — but never actually answer it.
-    expect(SYSTEM_PROMPT).toMatch(/never actually answer it, even partially/i);
-    expect(SYSTEM_PROMPT).toMatch(/steer straight back to him/i);
+    // A short REAL answer proves it is a real model; then redirect.
+    expect(SYSTEM_PROMPT).toMatch(/give the SHORT REAL ANSWER in one line/i);
+    expect(SYSTEM_PROMPT).toMatch(/steer straight back/i);
+    // Code is the one hard refusal — that is the misuse.
+    expect(SYSTEM_PROMPT).toMatch(/THE ONE THING YOU NEVER DO IS WRITE CODE/i);
+    expect(SYSTEM_PROMPT).toMatch(/not even pseudocode/i);
   });
 
   it("instructs short replies, since they are read aloud", () => {
