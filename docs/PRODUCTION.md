@@ -557,3 +557,53 @@ The language rule is now explicit: **23 Indian languages**, replies written in
 **their own script** rather than romanised, and natural Kannada sprinkled into
 the English — *guru*, *macha*, *swapla*, *beku*, *illa*, *chennagide*,
 *hogi banni*.
+
+## 19 · VOICE MODEL CHOICE — v3 vs v4-flash (1.14.1)
+
+`bulbul:v4-flash` is the newer, cheaper, faster tier: **<250 ms to first audio
+(vs v3), ~40% faster, ₹20 vs ₹30 per 10k characters**, same request contract.
+For a voice agent that is a real win, and it is a one-line change — `TTS_MODEL`
+and `TTS_VOICE` in `api/wrangler.toml`, then `npm run deploy`.
+
+**It is not an obvious switch here, for two reasons.**
+
+### 1. Kannada coverage on v4 is thin
+
+Sarvam's own guide says the Kannada roster on v4-flash is **3 voices** and to
+"audition carefully". This bot's whole personality is its Kannada-English mix,
+so the Kannada voice quality is the product, not a detail. The cost saving at
+this traffic is a few paise a month — the latency is the only real argument.
+
+So do not switch on the price table. **Listen first:**
+
+```
+export SARVAM_API_KEY=...        # or: set -a && . ./.env && set +a
+python3 scripts/tts-ab.py        # writes /tmp/tts-ab/*.wav, then play them
+```
+
+That renders the same Kanglish line through v3's current voice and the four
+v4-flash candidates, so the decision is made with ears rather than reasoning.
+
+### 2. The trap: v3 and v4 speakers are not interchangeable
+
+v3 takes **short names** (`shubh`, `priya`). v4-flash takes **persona IDs**
+(`shubh_enhi_ads`, `chaitra_kn_conversation`). Mixing them returns **400 in
+both directions**. `resolveVoice()` in `api/src/sarvam.ts` already enforces
+this per model, so a wrong pair is coerced rather than failing — but check
+`X-Voice-Coerced` on the response if a voice sounds like the wrong one.
+
+## 20 · A LANGUAGE CAVEAT WORTH KNOWING (1.14.1)
+
+The prompt tells the bot it speaks **23 Indian languages**. That is true of the
+**text** — the model writes them. It is **not** true of the **voice**: Bulbul
+supports **11** codes (`en-IN, hi-IN, bn-IN, gu-IN, kn-IN, ml-IN, mr-IN, od-IN,
+pa-IN, ta-IN, te-IN`), which is exactly the list in `api/src/schema.ts`.
+
+So a visitor who writes in Urdu or Assamese gets a correct reply in that script
+— but the speaker button will render it with whatever `language_code` the
+picker holds, because `/tts` takes the language from the client and the reply's
+own language is never detected.
+
+For this bot that is a corner: visitors write English or Kannada, both covered.
+Worth fixing properly if the other languages start showing up — the fix is to
+detect the reply's script and send that as `lang`, rather than the picker value.
