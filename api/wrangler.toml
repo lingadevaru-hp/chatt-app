@@ -1,0 +1,20 @@
+# Worker serves the proxy AND the static frontend in one deploy (no CORS).
+# Frontend bundle lives in ../dist — build it first:  (from repo root) npm run build
+# Then:  cd api && npx wrangler deploy
+# Secrets (never in this file):  npx wrangler secret put SARVAM_API_KEY
+name = "thoshan-assistant"
+main = "src/index.ts"
+compatibility_date = "2025-07-18"   # max supported by the pinned wrangler; our code uses nothing date-gated
+
+[assets]
+directory = "../dist"
+not_found_handling = "single-page-application"
+
+# Plain (non-secret) tunables. Secrets go via `wrangler secret put`.
+[vars]
+RATE_LIMIT = "20"
+RATE_WINDOW_S = "60"
+DAILY_CEILING = "300"
+CHAT_MODEL = "sarvam-105b-conversations"
+TTS_MODEL = "bulbul:v3"
+TTS_VOICE = "shubh"

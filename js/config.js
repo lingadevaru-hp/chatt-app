@@ -3,10 +3,14 @@
      Split → js/config.js
      The single switch that takes this from demo to production.
      ================================================================ */
-  export const CONFIG = {
-    /* "demo" = answer locally from J2. No network, no key, no cost.
-       "api"  = POST to CONFIG.apiBase and let a real model answer. */
-    mode: "demo",
+export const CONFIG = {
+  /* "demo" = answer locally from J2. No network, no key, no cost.
+     "api"  = POST to CONFIG.apiBase and let a real model answer.
+     Source default is ALWAYS "demo" (hard rule: no key, no network, no
+     cost for anyone opening this). The deployed Worker bundle bakes in
+     "api" via `VITE_MODE=api npm run build` — nothing else changes,
+     because J5 already has apiReply() and apiSpeak(). */
+  mode: import.meta.env.VITE_MODE === "api" ? "api" : "demo",
 
     /* Base path of YOUR serverless proxy. The proxy holds the API key.
        Never put a key in this file — everything here is public. */
