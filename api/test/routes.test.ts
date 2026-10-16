@@ -52,11 +52,14 @@ describe("POST /chat", () => {
       "fetch",
       vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: "Hello!" } }] }))),
     );
+    /* Deliberately NOT "hi": CACHE_SEED seeds the greeting and the project
+       list, so those are answered from cache and never reach the provider.
+       This test is about the passthrough, so it must ask something unseeded. */
     const res = await app.request(
       "/chat",
       {
         method: "POST",
-        body: JSON.stringify({ message: "hi", history: [{ role: "user", content: "yo" }] }),
+        body: JSON.stringify({ message: "tell me about his skills", history: [{ role: "user", content: "yo" }] }),
       },
       ENV,
     );
@@ -109,6 +112,25 @@ describe("POST /chat", () => {
     expect((await second.json()) as { reply: string }).toMatchObject({ reply: "Cached me" });
     expect(provider).toHaveBeenCalledTimes(1);
   });
+  // The flip side of the test above: the two most-asked questions are seeded,
+  // so they must be answered WITHOUT a provider call on the very first ask —
+  // not just on a repeat.
+  it("answers the seeded questions with zero provider calls, first time", async () => {
+    const provider = vi.fn(
+      async () => new Response(JSON.stringify({ choices: [{ message: { content: "SHOULD NEVER BE CALLED" } }] })),
+    );
+    vi.stubGlobal("fetch", provider);
+    for (const q of ["hi", "hello", "what projects has he built?", "tell me about his projects"]) {
+      const res = await app.request("/chat", { method: "POST", body: JSON.stringify({ message: q }) }, ENV);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("X-Cache")).toBe("HIT");
+      const out = (await res.json()) as { reply: string };
+      expect(out.reply).not.toContain("SHOULD NEVER BE CALLED");
+      expect(out.reply.length).toBeGreaterThan(20);
+    }
+    expect(provider).toHaveBeenCalledTimes(0);
+  });
+
   it("truncates visitor messages to 500 chars before the model", async () => {
     vi.stubGlobal(
       "fetch",
