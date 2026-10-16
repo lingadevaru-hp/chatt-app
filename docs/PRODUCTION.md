@@ -325,3 +325,14 @@ portfolio fallback, the bot silently stops pointing anyone at the code.
 
 Projects with nothing published yet (the insurance D-App) say so in their
 `line` — "code on request" — rather than linking somewhere unhelpful.
+
+### The mic dead-end (fixed in 1.11.1)
+
+`CONFIG.oneVoicePerTurn` withdraws the mic once a capture ends, so a visitor
+cannot stack two spoken turns into one message. That rule had a hole: if the
+speech-to-text came out wrong, the mic stayed hidden until they sent, and
+editing a bad transcription is not always possible.
+
+`js/chat.js` now calls `resetVoiceTurn()` whenever the composer is emptied. An
+empty box means there is no capture left to protect, so re-recording is
+legitimate. The mic is still withdrawn after a capture — it just is not a trap.
