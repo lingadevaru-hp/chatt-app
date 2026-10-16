@@ -18,8 +18,12 @@ RATE_LIMIT = "20"
 RATE_WINDOW_S = "60"
 DAILY_CEILING = "300"
 CHAT_MODEL = "sarvam-105b-conversations"
-TTS_MODEL = "bulbul:v3"
-TTS_VOICE = "shubh"
+# bulbul:v4-flash: latest TTS (10-2026) — sub-250ms first audio, ~40% faster
+# than v3, ₹20 vs ₹30 per 10k chars. Voices are per-language persona IDs,
+# NOT v3 short names; resolveTtsTarget in src/sarvam.ts maps lang → persona
+# (ml/od fall back to v3, which still covers all 11 languages).
+TTS_MODEL = "bulbul:v4-flash"
+TTS_VOICE = "shubh_enhi_companion"
 # saaras:v4 is the current default/recommended STT model. "unknown" lets it
 # auto-detect, which is right here: a visitor may speak English or Kannada.
 # The REST endpoint caps a request at 30s — keep CONFIG.maxRecordSeconds at 30.
