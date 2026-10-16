@@ -336,3 +336,33 @@ editing a bad transcription is not always possible.
 `js/chat.js` now calls `resetVoiceTurn()` whenever the composer is emptied. An
 empty box means there is no capture left to protect, so re-recording is
 legitimate. The mic is still withdrawn after a capture — it just is not a trap.
+
+### One voice per reply (1.11.2)
+
+The live model once opened with **"Thoshan here ... check out HIS projects"** —
+first person and third person in a single sentence, which reads like two
+different people. The owner likes the warmer first-person voice ("it feels more
+human"), so `SYSTEM_PROMPT` **allows** the bot to speak as him and only forbids
+**mixing** the two voices inside one reply. The test `allows speaking as him,
+but requires one consistent voice` keeps that rule from being dropped.
+
+Note: demo mode's 22 KB replies are still written in the third person ("He's
+Lingadevaru H P..."), so the two modes differ in voice. That only shows if the
+API is unreachable, since live mode is the deployed default. A first-person pass
+over the KB would make them match — not done yet.
+
+### Deploy guard (1.11.2)
+
+`npm run build:prod` guards the **build**. Nothing guarded the **deploy**, and
+`wrangler deploy` ships whatever is in `dist/` at that moment — which is how a
+stale demo bundle reached the live URL once: a build failed in the wrong
+directory, the deploy ran anyway, and the site quietly answered from the local
+KB instead of the model.
+
+- `vite.config.mjs` writes `dist/.build-mode` at the end of every build.
+  `build.emptyOutDir` clears `dist/` first, so the marker always describes the
+  most recent build.
+- `scripts/assert-dist-prod.js` reads it and exits 1 unless it says `api`.
+- `npm run deploy` runs that check, then `wrangler deploy`.
+
+Always deploy with `npm run deploy`, never bare `wrangler deploy`.
