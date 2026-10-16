@@ -8,14 +8,16 @@
      Reuses the same brain (J5) and records every turn into the active
      chat, so ending a call leaves a transcript behind.
      ================================================================ */
+import { CONFIG } from "./config.js";
 import { ensureChat, saveChats, touchChat, titleFrom, settings } from "./store.js";
 import { askBrain } from "./brain.js";
 import { $, plain, showToast, nowISO } from "./utils.js";
-import { pickVoice, stopSpeaking, recordToBlob, transcribeBlob, canRecord, stopActiveRecording } from "./speech.js";
+import { pickVoice, stopSpeaking, speechText, recordToBlob, transcribeBlob, canRecord, stopActiveRecording } from "./speech.js";
+import { apiSpeak } from "./brain.js";
 
   const callEl = $("#call"), callStatus = $("#callStatus"), callTimer = $("#callTimer"),
     callLines = $("#callLines"), callLive = $("#callLive"), callWaveEl = $("#callWave");
-  const call = { active: false, muted: false, speakerOff: false, state: "idle", tick: null, bars: null };
+  const call = { active: false, muted: false, speakerOff: false, state: "idle", tick: null, bars: null, audio: null };
 
   function buildCallWave() {
     callWaveEl.innerHTML = "";
@@ -112,13 +114,36 @@ import { pickVoice, stopSpeaking, recordToBlob, transcribeBlob, canRecord, stopA
     }, 55);
   }
 
-  function callSpeak(text) {
-    return new Promise((resolve) => {
-      const clean = plain(text);
-      if (call.speakerOff || !window.speechSynthesis) {
-        setCallState("speaking");
-        return setTimeout(resolve, Math.min(5000, 400 + clean.length * 32));
+  /* Speak one turn. Uses the SAME voice as the message speaker button —
+     Sarvam Bulbul via our Worker — because the browser voice was the whole
+     complaint: a call read aloud by Brave/Chrome is not the product.
+
+     The browser voice survives only as a last resort if the API genuinely
+     fails, and it says so in the console when that happens. */
+  async function callSpeak(text) {
+    const clean = speechText(text);
+    setCallState("speaking");
+    if (call.speakerOff || !clean) return;
+
+    if (CONFIG.mode === "api") {
+      try {
+        const url = await apiSpeak(clean);
+        await new Promise((resolve) => {
+          const audio = new Audio(url);
+          call.audio = audio;
+          const done = () => { URL.revokeObjectURL(url); if (call.audio === audio) call.audio = null; resolve(); };
+          audio.onended = done;
+          audio.onerror = done;
+          audio.play().catch(done);
+        });
+        return;
+      } catch (e) {
+        console.warn("[call] Sarvam voice failed, falling back to browser voice:", e && e.message);
       }
+    }
+
+    await new Promise((resolve) => {
+      if (!window.speechSynthesis) return setTimeout(resolve, Math.min(5000, 400 + clean.length * 32));
       stopSpeaking();
       const u = new SpeechSynthesisUtterance(clean);
       const v = pickVoice(settings.lang);
@@ -183,6 +208,7 @@ import { pickVoice, stopSpeaking, recordToBlob, transcribeBlob, canRecord, stopA
     call.active = false;
     clearInterval(call.tick); clearInterval(call.bars); call.bars = null;
     stopActiveRecording();   /* otherwise the mic stays open until the cap */
+    if (call.audio) { try { call.audio.pause(); } catch (e) {} call.audio = null; }
     stopSpeaking();
     callLive.textContent = "";
     callEl.classList.remove("show");
@@ -199,7 +225,7 @@ import { pickVoice, stopSpeaking, recordToBlob, transcribeBlob, canRecord, stopA
     this.classList.toggle("off", call.muted);
     this.setAttribute("aria-pressed", String(call.muted));
     this.querySelector("use").setAttribute("href", call.muted ? "#i-micoff" : "#i-mic");
-    if (call.muted) stopActiveRecording();
+    if (call.muted) { stopActiveRecording(); if (call.audio) { try { call.audio.pause(); } catch (e) {} call.audio = null; } }
     if (call.active) setCallState(call.state);
   });
   $("#ctlSpeaker").addEventListener("click", function () {

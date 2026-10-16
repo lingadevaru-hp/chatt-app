@@ -14,6 +14,7 @@
 // the final backstop: at zero balance Sarvam answers 402 and stops.
 import { Hono, type Context } from "hono";
 import { chatBody, ttsBody } from "./schema";
+import { CACHE_SEED } from "../../shared/knowledge.js";
 import { sarvamChat, sarvamTts, sarvamStt, resolveVoice, ProviderError } from "./sarvam";
 import { AnswerCache, MemoCache } from "./cache";
 import { allowRequest, underDailyCeiling, clientIp, type LimiterEnv } from "./limits";
@@ -36,6 +37,8 @@ const app = new Hono<{ Bindings: Env }>();
 // Per-isolate caches (same tradeoff as the limiter fallback — documented
 // in cache.ts). Hit rates are observable via /health for the §D report.
 const answerCache = new AnswerCache();
+/* See the seeding block in the /chat handler. */
+let cacheSeeded = false;
 const ttsMemo = new MemoCache();
 
 app.get("/health", (c) =>
@@ -85,6 +88,17 @@ app.post("/chat", async (c) => {
      never be able to name the model — otherwise a stranger could point it
      at the most expensive one. See the note in schema.ts. */
   const chatModel = c.env.CHAT_MODEL || "sarvam-105b-conversations";
+  /* Seed the two most-asked questions on first use. The cache is keyed on
+     model + message, and the model is per-request env, so this cannot run at
+     module load. Once per isolate is enough — the entries carry the cache's
+     own TTL. */
+  if (!cacheSeeded) {
+    cacheSeeded = true;
+    /* Typed here because CACHE_SEED is a plain-JS export from the shared
+       module, so its shape is inferred rather than declared. */
+    const seed = CACHE_SEED as Array<{ q: string; reply: string; thoughts: string[] }>;
+    for (const s of seed) answerCache.set(chatModel, s.q, { reply: s.reply, thoughts: s.thoughts });
+  }
   // Exact-match cache: repeat questions cost zero model calls. History is
   // excluded from the key by design (portfolio answers are context-free);
   // requests carrying files always go to the model.
