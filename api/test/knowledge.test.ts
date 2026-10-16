@@ -89,10 +89,24 @@ describe("prompt and KB agree", () => {
     }
   });
 
-  it("links every project somewhere", () => {
+  it("gives every project at least one real link", () => {
     for (const p of FACTS.projects) {
-      expect(p.link).toMatch(/^https:\/\//);
+      expect(p.links.length).toBeGreaterThan(0);
+      for (const l of p.links) {
+        expect(l.label.length).toBeGreaterThan(0);
+        expect(l.url).toMatch(/^https:\/\//);
+      }
     }
+  });
+
+  // A real-URL regression guard: FOSS Coin is the one project with genuine
+  // public artefacts, so if these ever fall back to the portfolio link the
+  // bot silently stops pointing anyone at the code.
+  it("points FOSS Coin at its repo and its on-chain proof", () => {
+    const foss = FACTS.projects.find((p) => p.name === "FOSS Coin")!;
+    const urls = foss.links.map((l) => l.url).join(" ");
+    expect(urls).toContain("github.com/lingadevaru-hp/Foss-Token");
+    expect(urls).toContain("solscan.io/token/");
   });
 
   it("keeps the shared contact in the prompt", () => {
