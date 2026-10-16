@@ -70,11 +70,14 @@ app.post("/chat", async (c) => {
   const denied = await guard(c, "chat");
   if (denied) return denied;
 
-  const { history, model } = parsed.data;
+  const { history } = parsed.data;
   // Cost cap (§D5): the model never sees more than 500 chars of visitor
   // text. Truncate-and-proceed (not reject) so long pastes still answer.
   const message = parsed.data.message.slice(0, 500);
-  const chatModel = model || c.env.CHAT_MODEL || "sarvam-105b-conversations";
+  /* Model is SERVER-SIDE ONLY. This endpoint is public, so a caller must
+     never be able to name the model — otherwise a stranger could point it
+     at the most expensive one. See the note in schema.ts. */
+  const chatModel = c.env.CHAT_MODEL || "sarvam-105b-conversations";
   // Exact-match cache: repeat questions cost zero model calls. History is
   // excluded from the key by design (portfolio answers are context-free);
   // requests carrying files always go to the model.
@@ -104,11 +107,9 @@ app.post("/tts", async (c) => {
   const denied = await guard(c, "tts");
   if (denied) return denied;
 
-  const model = parsed.data.model || c.env.TTS_MODEL || "bulbul:v3";
-  const { speaker, coerced } = resolveVoice(
-    model,
-    parsed.data.voice || c.env.TTS_VOICE || "",
-  );
+  /* Model and voice are SERVER-SIDE ONLY — same reason as chat. */
+  const model = c.env.TTS_MODEL || "bulbul:v3";
+  const { speaker, coerced } = resolveVoice(model, c.env.TTS_VOICE || "");
   const memoKey = ttsMemo.key(model, speaker, parsed.data.lang, parsed.data.text);
   const memoHit = ttsMemo.get(memoKey);
   if (memoHit) {
