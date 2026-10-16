@@ -63,7 +63,23 @@
   }
 
   export function formatReply(src) {
-    const lines = String(src == null ? "" : src).replace(/\r/g, "").split("\n");
+    /* Repair malformed link constructs on the RAW text, BEFORE splitting into
+       lines. Models sometimes let a list break slide inside a link:
+         [https://x\n-](https://x\n-)
+       The href pattern in richInline() needs a whitespace-free URL, so that
+       fails to match and the reply shows literal brackets and a dead link.
+       It has to be fixed here because richInline() runs PER LINE — split
+       first and the construct spans two lines, so neither half is
+       recognisable. The stray "-" is the next bullet, so restore the break as
+       a real newline rather than collapsing the whitespace, which would glue
+       the bullet onto the URL and corrupt the address. */
+    const raw = String(src == null ? "" : src)
+      .replace(/\r/g, "")
+      .replace(/\[([^\]]*)\]\(([^)]*)\)/g, (m, text, url) => {
+        if (!/\s/.test(url)) return m;
+        return text.replace(/[ \t]*\n[ \t]*/g, "\n");
+      });
+    const lines = raw.split("\n");
     const out = [];
     let i = 0;
 
