@@ -139,6 +139,16 @@ describe("system prompt shape", () => {
     expect(SYSTEM_PROMPT).toMatch(/kannada-english mix/i);
     expect(SYSTEM_PROMPT).toMatch(/english stays dominant/i);
   });
+
+  // The model once opened with "Thoshan here ... check out HIS projects" —
+  // first person and third person in one sentence, which reads like two
+  // different people. The owner likes the warmer first-person voice, so the
+  // rule allows it but forbids mixing the two within a reply.
+  it("allows speaking as him, but requires one consistent voice", () => {
+    expect(SYSTEM_PROMPT).toMatch(/speak as him, in the first person/i);
+    expect(SYSTEM_PROMPT).toMatch(/stay in it for the whole reply/i);
+    expect(SYSTEM_PROMPT).toMatch(/never mix them/i);
+  });
 });
 
 describe("KB entries", () => {
