@@ -438,3 +438,49 @@ Fixed at both ends:
 
 Verified against the exact broken string: 0 literal brackets, 0 dead hrefs, the
 URL linkified, and the bullet rendered as `<ul><li>`.
+
+## 15 · THE VOICE PATH (1.13.0)
+
+Three separate faults made "text-to-speech doesn't work" true.
+
+### Call mode never used Sarvam
+
+`js/call.js` called `speechSynthesis` directly. The message speaker button went
+through `apiSpeak()`, but the hands-free call did not — so a call was read aloud
+by Brave/Chrome, which is exactly the browser voice that was the complaint.
+
+`callSpeak()` now uses the same Sarvam voice as the button, with the browser
+voice kept only as a last resort and a console warning when it fires. `call.audio`
+is paused on End, Mute and Speaker-off.
+
+### `plain()` sent emoji and URLs to the engine
+
+`plain()` is shared with captions and the PDF export, which want emoji and full
+URLs, so the stripping could not live there. `speechText()` in `js/speech.js` now
+prepares text **for speech specifically**:
+
+- URLs removed — spoken aloud they become "h-t-t-p-s-colon-slash-slash"
+- emoji removed — the engine names them or trips on them
+- the link labels left stranded by removing a URL (`Repo: · Wiki: · Model:`)
+  are dropped too, so the sentence still reads
+
+Only the known link labels are stripped, so ordinary text like "Note: something"
+survives.
+
+### The fallback was silent
+
+`speak()` caught every error and quietly dropped to the browser voice — so a
+failed Sarvam call looked identical to a working one. It now logs
+`[tts] Sarvam voice failed…` and, if `audio.play()` is blocked, tells the visitor
+to tap once more. `play()` was also fired-and-forgotten; it is awaited and caught.
+
+## 16 · ANSWER CACHE SEEDING (1.13.0)
+
+The cache in `api/src/cache.ts` only helped **repeats**, so the first visitor
+still paid for the most predictable question on the site. `CACHE_SEED` in
+`shared/knowledge.js` seeds the greeting and the project list at first use,
+keyed the way `normalizeQuestion()` keys them. Verified with a counting stub:
+both questions return `X-Cache: HIT` with **zero** provider calls.
+
+It cannot run at module load because the key includes the model, which comes
+from per-request env — hence the once-per-isolate guard in the `/chat` handler.
