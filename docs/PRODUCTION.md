@@ -304,3 +304,24 @@ the model or voice: edit those vars and `wrangler deploy`, no frontend rebuild.
 
 **Adding a project** means three edits in one file: add it to `FACTS.projects`
 with a `link`, and give it a KB entry. The test checks the two agree.
+
+### Project links
+
+Each entry in `FACTS.projects` carries a `links` array of `{ label, url }`
+rather than a single URL, because most projects have more than one useful
+destination — FOSS Coin has a repo, a wiki page and an on-chain explorer.
+
+```js
+{ name: "FOSS Coin", line: "...",
+  links: [{ label: "Repo", url: "https://github.com/lingadevaru-hp/Foss-Token" },
+          { label: "Wiki", url: "https://lingadevaru.in/wiki/foss-coin" },
+          { label: "On-chain", url: "https://solscan.io/token/64AcK..." }] }
+```
+
+The system prompt renders every link under its project. The test asserts each
+project has at least one `https://` link with a non-empty label, and pins FOSS
+Coin specifically — if its repo or Solscan link ever regresses to the
+portfolio fallback, the bot silently stops pointing anyone at the code.
+
+Projects with nothing published yet (the insurance D-App) say so in their
+`line` — "code on request" — rather than linking somewhere unhelpful.
