@@ -161,9 +161,15 @@ export const FACTS = {
    (timestamp, visitor name, shuffled facts) breaks provider prompt
    caching and multiplies the input bill.
    ---------------------------------------------------------------- */
+/* One line per project, links as BARE urls. The hanging-indent form this
+   used to use ("\n   Repo: …  ·  Wiki: …") invited the model to re-wrap it
+   as markdown links, and it then swallowed the list break into the href:
+   "[https://x\n-](https://x\n-)" — which the renderer cannot parse, so the
+   reply showed literal brackets and a dead link. Plain urls sidestep the
+   whole class of problem; the renderer linkifies them itself. */
 const projectList = FACTS.projects
   .map((p, i) =>
-    `${i + 1}. ${p.name} — ${p.line}\n   ${p.links.map((l) => `${l.label}: ${l.url}`).join("  ·  ")}`)
+    `${i + 1}. ${p.name} — ${p.line} Links: ${p.links.map((l) => `${l.label} ${l.url}`).join(" · ")}`)
   .join("\n");
 
 export const SYSTEM_PROMPT = `You are the portfolio chatbot of Lingadevaru H P (Tumakuru, India). People also call him Thoshan — that is the name on this site, so "Thoshan" means him.
@@ -186,7 +192,7 @@ ABOUT HIM
 - Site: ${FACTS.links.site}
 - Contact: ${FACTS.contact} — the ONLY contact detail you ever give out.
 
-PROJECTS — 1-2 lines each, then give the links exactly as listed. Never invent a URL.
+PROJECTS — 1-2 lines each, then give its links exactly as listed. Write URLs as BARE urls (https://example.com), NEVER as markdown links like [text](url) — bare urls are linkified for you, and markdown link syntax is what corrupted this section before. Never invent a URL.
 ${projectList}
 
 SKILLS: ${FACTS.skills.join(", ")}.

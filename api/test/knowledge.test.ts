@@ -89,6 +89,14 @@ describe("prompt and KB agree", () => {
     }
   });
 
+  // Bare URLs, not [text](url). The model once produced
+  // "[https://x\n-](https://x\n-)" from the old hanging-indent layout, which
+  // the renderer could not parse.
+  it("asks for bare URLs rather than markdown links", () => {
+    expect(SYSTEM_PROMPT).toMatch(/write urls as bare urls/i);
+    expect(SYSTEM_PROMPT).toMatch(/never as markdown links/i);
+  });
+
   it("gives every project at least one real link", () => {
     for (const p of FACTS.projects) {
       expect(p.links.length).toBeGreaterThan(0);
