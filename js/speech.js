@@ -52,19 +52,56 @@ import { apiSpeak } from "./brain.js";
     speak(text, btn);
   }
 
+  /* Text prepared for the TTS engine, which is NOT the same as text for the
+     eye. Two things must go before it is spoken:
+       - URLs. Read aloud they become "h-t-t-p-s-colon-slash-slash…", which
+         is worse than silence.
+       - Emoji. The engine either names them ("rocket") or trips on them.
+     plain() deliberately keeps both (captions and the PDF export want them),
+     so the stripping lives here instead. */
+  export function speechText(md) {
+    return plain(md)
+      .replace(/https?:\/\/\S+/g, "")
+      .replace(/\p{Extended_Pictographic}/gu, "")
+      .replace(/[\u2190-\u21FF\u2600-\u27BF\uFE0F]/g, "")
+      /* Removing the URL leaves its label stranded — "Repo: · Wiki: · Model:".
+         Only the known link labels are dropped, so ordinary text like
+         "Note: something" survives untouched. */
+      .replace(/\b(?:repo|wiki|on-?chain|model|site|live|portfolio|demo|links?)\s*:\s*/gi, "")
+      .replace(/[\u00b7\u2022]/g, " ")          /* the · and • separators */
+      .replace(/\s{2,}/g, " ")
+      .replace(/^[\s,;:.-]+/, "")
+      .trim();
+  }
+
   export async function speak(text, btn) {
     stopSpeaking();
-    const clean = plain(text);
+    const clean = speechText(text);
+    if (!clean) return;
     if (CONFIG.mode === "api") {
+      setSpeakState(btn, true);
       try {
-        setSpeakState(btn, true);
         const url = await apiSpeak(clean);
         const audio = new Audio(url);
-        audio.onended = () => { setSpeakState(btn, false); URL.revokeObjectURL(url); afterSpeak(); };
-        audio.onerror = () => setSpeakState(btn, false);
-        audio.play();
+        const done = () => { setSpeakState(btn, false); URL.revokeObjectURL(url); };
+        audio.onended = () => { done(); afterSpeak(); };
+        audio.onerror = done;
+        /* play() rejects under the autoplay policy and on a bad blob. It used
+           to be fired and forgotten, so a blocked play looked identical to a
+           working one with the volume down. */
+        await audio.play().catch((err) => {
+          done();
+          console.warn("[tts] playback blocked:", err && err.message);
+          showToast("Tap once more — the browser blocked playback");
+        });
         return;
-      } catch (e) { setSpeakState(btn, false); }
+      } catch (e) {
+        /* The real voice failed. Falling back to the browser voice is a
+           reasonable last resort, but doing it SILENTLY is what made this so
+           hard to diagnose — it looked like the feature worked. Say so. */
+        setSpeakState(btn, false);
+        console.warn("[tts] Sarvam voice failed, falling back to browser voice:", e && e.message);
+      }
     }
     if (!window.speechSynthesis) { showToast("Speech not supported in this browser"); return; }
     const u = new SpeechSynthesisUtterance(clean);
