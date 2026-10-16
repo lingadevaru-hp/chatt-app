@@ -2,17 +2,20 @@
      J8 · VOICE CALL
      Split → js/call.js
      Full-screen hands-free loop: listen → think → speak → listen …
+     Speech-to-text is Sarvam (via our Worker), same path as the composer
+     mic — not the browser Web Speech API. There is no Stop button in a
+     call, so the recorder ends itself after a stretch of quiet.
      Reuses the same brain (J5) and records every turn into the active
      chat, so ending a call leaves a transcript behind.
      ================================================================ */
 import { ensureChat, saveChats, touchChat, titleFrom, settings } from "./store.js";
 import { askBrain } from "./brain.js";
 import { $, plain, showToast, nowISO } from "./utils.js";
-import { pickVoice, stopSpeaking, SR } from "./speech.js";
+import { pickVoice, stopSpeaking, recordToBlob, transcribeBlob, canRecord, stopActiveRecording } from "./speech.js";
 
   const callEl = $("#call"), callStatus = $("#callStatus"), callTimer = $("#callTimer"),
     callLines = $("#callLines"), callLive = $("#callLive"), callWaveEl = $("#callWave");
-  const call = { active: false, muted: false, speakerOff: false, state: "idle", tick: null, bars: null, rec: null };
+  const call = { active: false, muted: false, speakerOff: false, state: "idle", tick: null, bars: null };
 
   function buildCallWave() {
     callWaveEl.innerHTML = "";
@@ -62,51 +65,33 @@ import { pickVoice, stopSpeaking, SR } from "./speech.js";
     }, 500);
   }
 
+  /* Listen for one utterance, resolve with the transcript or null.
+     No Stop button in a call, so the recorder ends itself after quiet.
+     maxSeconds is the hard backstop and MUST stay under Sarvam's 30s REST
+     ceiling — over that the request 422s. */
   function callListen() {
     return new Promise((resolve) => {
       if (!call.active) return resolve(null);
       if (call.muted) { setCallState("listening"); return setTimeout(() => resolve(null), 350); }
-      if (!SR) return callSimulateListen(resolve);
+      if (!canRecord()) return callSimulateListen(resolve);
 
-      let finalText = "", settled = false;
-      const rec = new SR();
-      call.rec = rec;
-      rec.lang = settings.lang;
-      rec.continuous = false;
-      rec.interimResults = true;
-
-      const settle = (val) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(guard);
-        try { rec.abort(); } catch (e) {}
-        call.rec = null;
-        resolve(val);
-      };
-      const guard = setTimeout(() => settle(finalText.trim() || null), 12000);
-
-      rec.onresult = (e) => {
-        let interim = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const t = e.results[i][0].transcript;
-          if (e.results[i].isFinal) finalText += t; else interim += t;
-        }
-        const parts = [finalText.trim(), interim.trim()].filter(Boolean);
-        callLive.textContent = parts.join(" ").replace(/\s{2,}/g, " ");
-      };
-      rec.onerror = (ev) => {
-        if (ev.error === "no-speech") return settle(null);
-        if (ev.error === "aborted" || settled) return;
-        settled = true; clearTimeout(guard);
-        try { rec.abort(); } catch (e) {}
-        call.rec = null;
-        showToast("Microphone unavailable — using demo voice");
-        callSimulateListen(resolve);
-      };
-      rec.onend = () => settle(finalText.trim() || null);
-
-      try { rec.start(); setCallState("listening"); }
-      catch (e) { settle(null); }
+      setCallState("listening");
+      recordToBlob({
+        maxSeconds: 25,
+        stopOnSilence: true,
+        silenceMs: 1600,
+        /* Batch STT gives no interim words, so show a small "…" whenever
+           there is voice energy — it tells the visitor the mic is live. */
+        onLevel: (l) => { if (call.active) callLive.textContent = l > 0.08 ? "…" : ""; },
+      })
+        .then((clip) => {
+          if (!clip || !call.active) return resolve(null);
+          return transcribeBlob(clip.blob, clip.type).then(
+            (t) => resolve(t || null),
+            () => resolve(null),
+          );
+        })
+        .catch(() => resolve(null));
     });
   }
 
@@ -197,7 +182,7 @@ import { pickVoice, stopSpeaking, SR } from "./speech.js";
     if (!call.active) return;
     call.active = false;
     clearInterval(call.tick); clearInterval(call.bars); call.bars = null;
-    if (call.rec) { try { call.rec.abort(); } catch (e) {} call.rec = null; }
+    stopActiveRecording();   /* otherwise the mic stays open until the cap */
     stopSpeaking();
     callLive.textContent = "";
     callEl.classList.remove("show");
@@ -214,7 +199,7 @@ import { pickVoice, stopSpeaking, SR } from "./speech.js";
     this.classList.toggle("off", call.muted);
     this.setAttribute("aria-pressed", String(call.muted));
     this.querySelector("use").setAttribute("href", call.muted ? "#i-micoff" : "#i-mic");
-    if (call.muted && call.rec) { try { call.rec.abort(); } catch (e) {} }
+    if (call.muted) stopActiveRecording();
     if (call.active) setCallState(call.state);
   });
   $("#ctlSpeaker").addEventListener("click", function () {
