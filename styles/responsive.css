@@ -33,7 +33,7 @@
   .app.collapsed .search-tile__label,
   .app.collapsed .search-tile__hint{display:none}
   .app.collapsed .recent{display:none}
-  .app.collapsed .sidebar__foot{flex-direction:column;gap:6px;padding:10px 0 0}
+  .app.collapsed .sidebar__foot{flex-direction:column;gap:6px;padding:10px 0 0;margin-top:auto}
   .app.collapsed .sidebar__foot .name{display:none}
 }
 @media (min-width:1024px) and (max-width:1180px){:root{--sidebar-w:250px}}
