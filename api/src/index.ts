@@ -15,7 +15,7 @@
 import { Hono, type Context } from "hono";
 import { chatBody, ttsBody } from "./schema";
 import { CACHE_SEED } from "../../shared/knowledge.js";
-import { sarvamChat, sarvamTts, sarvamStt, resolveVoice, ProviderError } from "./sarvam";
+import { sarvamChat, sarvamTts, sarvamStt, resolveTtsTarget, ProviderError } from "./sarvam";
 import { AnswerCache, MemoCache } from "./cache";
 import { allowRequest, underDailyCeiling, clientIp, type LimiterEnv } from "./limits";
 
@@ -128,9 +128,11 @@ app.post("/tts", async (c) => {
   const denied = await guard(c, "tts");
   if (denied) return denied;
 
-  /* Model and voice are SERVER-SIDE ONLY — same reason as chat. */
-  const model = c.env.TTS_MODEL || "bulbul:v3";
-  const { speaker, coerced } = resolveVoice(model, c.env.TTS_VOICE || "");
+  /* Model and voice are SERVER-SIDE ONLY — same reason as chat. The speaker
+     follows the request language: v4 personas are per-language, and ml/od
+     fall back to v3 (no v4 personas exist for them). */
+  const envModel = c.env.TTS_MODEL || "bulbul:v3";
+  const { model, speaker, coerced } = resolveTtsTarget(envModel, c.env.TTS_VOICE || "", parsed.data.lang);
   const memoKey = ttsMemo.key(model, speaker, parsed.data.lang, parsed.data.text);
   const memoHit = ttsMemo.get(memoKey);
   if (memoHit) {

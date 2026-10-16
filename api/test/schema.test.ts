@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { chatBody, ttsBody } from "../src/schema";
-import { resolveVoice } from "../src/sarvam";
+import { resolveVoice, resolveTtsTarget } from "../src/sarvam";
 
 describe("chatBody", () => {
   it("accepts a minimal message", () => {
@@ -65,6 +65,37 @@ describe("resolveVoice", () => {
     expect(resolveVoice("bulbul:v4-flash", "simran")).toEqual({
       speaker: "shubh_enhi_ads",
       coerced: true,
+    });
+  });
+});
+
+describe("resolveTtsTarget", () => {
+  // v4 personas are per-language: the speaker must follow the request lang.
+  it("maps en/hi to the Shubh companion persona", () => {
+    expect(resolveTtsTarget("bulbul:v4-flash", "", "en-IN")).toEqual({
+      model: "bulbul:v4-flash", speaker: "shubh_enhi_companion", coerced: true,
+    });
+    expect(resolveTtsTarget("bulbul:v4-flash", "", "hi-IN").speaker).toBe("shubh_enhi_companion");
+  });
+  it("maps kn/ta/te to their conversational personas", () => {
+    expect(resolveTtsTarget("bulbul:v4-flash", "", "kn-IN").speaker).toBe("chetan_kn_conversation");
+    expect(resolveTtsTarget("bulbul:v4-flash", "", "ta-IN").speaker).toBe("gokul_ta_narration");
+    expect(resolveTtsTarget("bulbul:v4-flash", "", "te-IN").speaker).toBe("kavitha_te_conversation");
+  });
+  it("falls back to v3 for ml/od, which have no v4 personas", () => {
+    expect(resolveTtsTarget("bulbul:v4-flash", "", "ml-IN")).toEqual({
+      model: "bulbul:v3", speaker: "shubh", coerced: true,
+    });
+    expect(resolveTtsTarget("bulbul:v4-flash", "", "od-IN").model).toBe("bulbul:v3");
+  });
+  it("honours a valid persona-ID override from env", () => {
+    expect(resolveTtsTarget("bulbul:v4-flash", "simran_en_customer", "en-IN")).toEqual({
+      model: "bulbul:v4-flash", speaker: "simran_en_customer", coerced: false,
+    });
+  });
+  it("ignores lang for non-v4 models", () => {
+    expect(resolveTtsTarget("bulbul:v3", "priya", "kn-IN")).toEqual({
+      model: "bulbul:v3", speaker: "priya", coerced: false,
     });
   });
 });

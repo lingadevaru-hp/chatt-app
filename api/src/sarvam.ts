@@ -34,6 +34,23 @@ export const MODEL_DEFAULT_VOICE: Record<string, string> = {
   "bulbul:v4-flash": "shubh_enhi_ads",
 };
 
+// v4-flash personas are per-language (docs.sarvam.ai, 10-2026). One Shubh
+// companion voice for en/hi keeps the bot's identity; conversational
+// personas for the rest. v4 has NO Malayalam/Odia personas — those fall
+// back to v3 (see resolveTtsTarget), never to a 400.
+const V4_PERSONA_BY_LANG: Record<string, string> = {
+  en: "shubh_enhi_companion",
+  hi: "shubh_enhi_companion",
+  kn: "chetan_kn_conversation",
+  ta: "gokul_ta_narration",
+  te: "kavitha_te_conversation",
+  bn: "arnab_bn_conversation",
+  mr: "nilesh_mr_conversation",
+  gu: "bhavik_gu_conversation",
+  pa: "anand_pa_conversation",
+};
+const V4_FALLBACK_LANGS = new Set(["ml", "od"]);
+
 /** Coerce a frontend-provided voice to one the model accepts. */
 export function resolveVoice(model: string, voice: string): { speaker: string; coerced: boolean } {
   const fallback = MODEL_DEFAULT_VOICE[model] || "shubh";
@@ -46,6 +63,30 @@ export function resolveVoice(model: string, voice: string): { speaker: string; c
     return /^[a-z]+_[a-z]+_[a-z]+$/.test(v) ? { speaker: v, coerced: false } : { speaker: fallback, coerced: true };
   }
   return { speaker: fallback, coerced: true };
+}
+
+/**
+ * Language-aware TTS target. Persona IDs are per-language, so the speaker
+ * must follow the request's `lang`, not just the env default. ml/od have no
+ * v4 personas and fall back to v3+shubh rather than 400ing. Non-v4 models
+ * keep the old behaviour (lang ignored).
+ */
+export function resolveTtsTarget(
+  model: string,
+  voice: string,
+  lang: string,
+): { model: string; speaker: string; coerced: boolean } {
+  const prefix = (lang || "").split("-")[0].toLowerCase();
+  if (model !== "bulbul:v4-flash") {
+    const r = resolveVoice(model, voice);
+    return { model, speaker: r.speaker, coerced: r.coerced };
+  }
+  if (V4_FALLBACK_LANGS.has(prefix)) {
+    return { model: "bulbul:v3", speaker: "shubh", coerced: true };
+  }
+  const v = (voice || "").trim().toLowerCase();
+  if (/^[a-z]+_[a-z]+_[a-z]+$/.test(v)) return { model, speaker: v, coerced: false };
+  return { model, speaker: V4_PERSONA_BY_LANG[prefix] || "shubh_enhi_companion", coerced: true };
 }
 
 /* The system prompt lives in shared/knowledge.js — the single source of
