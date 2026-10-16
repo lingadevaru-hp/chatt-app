@@ -685,3 +685,23 @@ bound to the client IP for one hour (`makeSession`/`checkSession` in
 `api/src/turnstile.ts`). Mobile IPs change — wifi to 5G, carrier NAT — so a
 session can go stale mid-visit. The frontend recovers by re-verifying on a 403,
 but that is an extra round trip on a phone. Worth watching after enabling.
+
+## 23 · THE DAILY CEILING WAS 40× THE BUDGET (1.15.2)
+
+`DAILY_CEILING` was 300. One uncached spoken reply costs about **₹0.44**
+(TTS ₹0.40 + chat ₹0.04 — TTS dominates), so 300/day permitted **₹131/day, or
+₹3,938 a month**, against a stated budget of ₹100/month. The budget is roughly
+**228 uncached replies in total**.
+
+Lowered to **50/day** — a bad day is capped at ~₹22, and real traffic is
+unaffected because the greeting and the project list are served from the
+seeded answer cache at ₹0.
+
+**This is the only limit that bounds spend regardless of who is asking.** A bot
+that passes Turnstile burns the same ceiling; the rate limit only bounds the
+burst. So the ceiling is the cost control, and Turnstile is defence in depth on
+top of it.
+
+**The ceiling bounds a day, not a month.** Even at 50/day, thirty bad days
+would be ₹656. The only thing that can bound the month is the **spend alert on
+the Sarvam dashboard** — keep it on, with auto-recharge off.
