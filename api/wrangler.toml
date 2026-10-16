@@ -2,7 +2,7 @@
 # Frontend bundle lives in ../dist — build it first:  (from repo root) npm run build
 # Then:  cd api && npx wrangler deploy
 # Secrets (never in this file):  npx wrangler secret put SARVAM_API_KEY
-name = "thoshan-assistant"
+name = "chatt"   # existing worker: chatt.lingadevaru203.workers.dev (+ ai.lingadevaru.in)
 main = "src/index.ts"
 compatibility_date = "2025-07-18"   # max supported by the pinned wrangler; our code uses nothing date-gated
 
