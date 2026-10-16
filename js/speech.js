@@ -26,6 +26,11 @@ import { apiSpeak } from "./brain.js";
      of the first, and switching chats left the old one running. */
   let currentAudio = null;
   let speakPhase = "idle";   // idle | loading | speaking | paused
+  /* Bumped by stopSpeaking(). The chunked player checks it after every await,
+     so a stop or a chat switch cannot leave a reply talking into a screen the
+     visitor has already left. */
+  let speakGen = 0;
+  let abortSpeak = null;
 
   const loadVoices = () => { voices = window.speechSynthesis ? speechSynthesis.getVoices() : []; };
   if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
@@ -60,10 +65,18 @@ import { apiSpeak } from "./brain.js";
   }
 
   export function stopSpeaking() {
+    speakGen++;
+    if (abortSpeak) { const a = abortSpeak; abortSpeak = null; a(); }
     if (currentAudio) {
       const src = currentAudio.src;
       currentAudio.onended = currentAudio.onerror = null;
       try { currentAudio.pause(); } catch (e) {}
+      /* pause() alone leaves the browser believing the element is still a
+         live media session — which is why a stuck "Playing" bar stayed on
+         screen long after a reply had finished. Clearing src and reloading
+         is what actually ends it. */
+      currentAudio.removeAttribute("src");
+      try { currentAudio.load(); } catch (e) {}
       currentAudio = null;
       /* Free the blob — these are per-reply and would otherwise pile up. */
       if (src && src.indexOf("blob:") === 0) { try { URL.revokeObjectURL(src); } catch (e) {} }
@@ -118,40 +131,124 @@ import { apiSpeak } from "./brain.js";
       .trim();
   }
 
+  /* Split a reply into speakable chunks.
+
+     THE point of this function: the old path synthesised the ENTIRE reply
+     before a single word played, so the speaker button sat dead for 8-10
+     seconds on a long answer. Chunking by sentence means the first short
+     chunk is all we wait for — the rest are already in flight while it plays.
+     Same characters, same cost, far sooner. */
+  export function speechChunks(text, maxLen = 170) {
+    const sentences = String(text)
+      .split(/(?<=[.!?…])\s+|\n+/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const out = [];
+    for (const sent of sentences) {
+      const last = out[out.length - 1];
+      if (last && last.length + sent.length + 1 <= maxLen) out[out.length - 1] = last + " " + sent;
+      else out.push(sent);
+    }
+    /* A single sentence longer than maxLen still has to be broken, or one
+       chunk is as slow as the whole reply used to be. */
+    return out.flatMap((c) => {
+      if (c.length <= maxLen) return [c];
+      const bits = [];
+      let cur = "";
+      for (const w of c.split(" ")) {
+        if (cur && cur.length + w.length + 1 > maxLen) { bits.push(cur); cur = w; }
+        else cur = cur ? cur + " " + w : w;
+      }
+      if (cur) bits.push(cur);
+      return bits;
+    });
+  }
+
+  /* Play chunks through ONE audio element. One, not N: N elements left N live
+     media sessions, which is what put a stuck "Playing" bar on screen. */
+  function playChunks(chunks, onStart) {
+    const gen = ++speakGen;
+    const audio = new Audio();
+    currentAudio = audio;
+    const urls = [];
+    let cancelled = false;
+    let wake = null;
+
+    abortSpeak = () => { cancelled = true; if (wake) wake(); };
+
+    const cleanup = () => {
+      audio.onended = audio.onerror = null;
+      try { audio.pause(); } catch (e) {}
+      audio.removeAttribute("src");
+      try { audio.load(); } catch (e) {}
+      urls.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) {} });
+      urls.length = 0;
+      if (currentAudio === audio) currentAudio = null;
+      abortSpeak = null;
+    };
+
+    const run = (async () => {
+      /* Fire every chunk at once: the first is all we wait for, and the rest
+         resolve while it plays. */
+      const jobs = chunks.map((c) =>
+        apiSpeak(c).then(
+          (u) => { if (gen === speakGen) urls.push(u); else { try { URL.revokeObjectURL(u); } catch (e) {} } return u; },
+          () => null,
+        ));
+      let first = true;
+      for (const job of jobs) {
+        const url = await job;
+        if (cancelled || gen !== speakGen || !url) return false;
+        const ok = await new Promise((res) => {
+          wake = () => res(false);
+          const end = (v) => { audio.onended = audio.onerror = null; wake = null; res(v); };
+          audio.onended = () => end(true);
+          audio.onerror = () => end(false);
+          audio.src = url;
+          if (first) { first = false; onStart(); }
+          audio.play().catch(() => end(false));
+        });
+        if (!ok || cancelled || gen !== speakGen) return false;
+      }
+      return true;
+    })();
+
+    return { run, cleanup };
+  }
+
+  /* Speak a whole reply through the chunked player and resolve when it ends
+     or is stopped. Call mode uses this so a call starts talking after the
+     FIRST sentence instead of waiting for the entire reply to synthesise —
+     which is most of the dead air in a voice call. */
+  export async function speakChunked(text, onStart) {
+    const clean = speechText(text);
+    if (!clean) return;
+    const chunks = speechChunks(clean);
+    if (!chunks.length) return;
+    const { run, cleanup } = playChunks(chunks, onStart || (() => {}));
+    try { await run; } finally { cleanup(); }
+  }
+
   export async function speak(text, btn) {
     stopSpeaking();
     const clean = speechText(text);
     if (!clean) return;
     if (CONFIG.mode === "api") {
       setSpeakState(btn, "loading");
+      const chunks = speechChunks(clean);
+      if (!chunks.length) { setSpeakState(btn, "idle"); return; }
+      const { run, cleanup } = playChunks(chunks, () => setSpeakState(btn, "speaking"));
       try {
-        const url = await apiSpeak(clean);
-        /* The visitor may have switched chats or hit stop while we were
-           fetching. Do not start playback into a UI that has moved on —
-           that is how a clip used to "come back" seconds later. */
-        if (speakBtnActive !== btn) { try { URL.revokeObjectURL(url); } catch (e) {} return; }
-
-        const audio = new Audio(url);
-        currentAudio = audio;
-        const release = () => {
-          if (currentAudio === audio) currentAudio = null;
-          try { URL.revokeObjectURL(url); } catch (e) {}
-        };
-        audio.onended = () => { release(); setSpeakState(btn, "idle"); afterSpeak(); };
-        audio.onerror = () => { release(); setSpeakState(btn, "idle"); };
-
-        setSpeakState(btn, "speaking");
         /* play() rejects under the autoplay policy and on a bad blob. It used
            to be fired and forgotten, so a blocked play looked identical to a
            working one with the volume down. */
-        await audio.play().catch((err) => {
-          release();
-          setSpeakState(btn, "idle");
-          console.warn("[tts] playback blocked:", err && err.message);
-          showToast("Tap once more — the browser blocked playback");
-        });
+        const completed = await run;
+        cleanup();
+        setSpeakState(btn, "idle");
+        if (completed) afterSpeak();
         return;
       } catch (e) {
+        cleanup();
         /* The real voice failed. Falling back to the browser voice is a
            reasonable last resort, but doing it SILENTLY is what made this so
            hard to diagnose — it looked like the feature worked. Say so. */
@@ -223,6 +320,12 @@ import { apiSpeak } from "./brain.js";
         let ctx = null, analyser = null, buf = null, raf = 0, done = false;
         let lastLoud = Date.now();
         let tick = null;
+        /* Did the visitor actually say anything? Without this, a silent clip
+           was still uploaded and billed — and in voice mode the listen loop
+           cycles every couple of seconds, so it was paying for silence over
+           and over. It also made the second turn feel dead: the loop kept
+           ending its own recording before the visitor got a word in. */
+        let spoke = false;
 
         const finish = () => {
           if (done) return;
@@ -240,34 +343,39 @@ import { apiSpeak } from "./brain.js";
              must not stay lit while we wait on the network. */
           stream.getTracks().forEach((t) => t.stop());
           const type = mr.mimeType || "audio/webm";
-          resolve({ blob: new Blob(parts, { type }), type });
+          resolve({ blob: new Blob(parts, { type }), type, spoke });
         };
 
         tick = setInterval(() => {
           if (Date.now() - lastLoud >= maxSeconds * 1000) finish();
         }, 200);
 
-        if (stopOnSilence) {
-          try {
-            ctx = new (window.AudioContext || window.webkitAudioContext)();
-            analyser = ctx.createAnalyser();
-            analyser.fftSize = 512;
-            ctx.createMediaStreamSource(stream).connect(analyser);
-            buf = new Uint8Array(analyser.fftSize);
-            const listen = () => {
-              if (done) return;
-              analyser.getByteTimeDomainData(buf);
-              let peak = 0;
-              for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
-              if (onLevel) onLevel(peak / 128);
-              if (peak > 8) lastLoud = Date.now();
-              else if (Date.now() - lastLoud > silenceMs) { finish(); return; }
-              raf = requestAnimationFrame(listen);
-            };
-            listen();
-          } catch (e) {
-            /* No AnalyserNode: fall back to the hard time stop above. */
-          }
+        /* The level meter runs ALWAYS — not only for silence-stop. It is how
+           we know whether anything was actually said, and uploading silence
+           is both a wasted STT bill and, in call mode, what made the loop end
+           its own recording before the visitor got a word in. */
+        try {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          analyser = ctx.createAnalyser();
+          analyser.fftSize = 512;
+          ctx.createMediaStreamSource(stream).connect(analyser);
+          buf = new Uint8Array(analyser.fftSize);
+          const listen = () => {
+            if (done) return;
+            analyser.getByteTimeDomainData(buf);
+            let peak = 0;
+            for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
+            if (onLevel) onLevel(peak / 128);
+            if (peak > 8) { lastLoud = Date.now(); spoke = true; }
+            else if (stopOnSilence && Date.now() - lastLoud > silenceMs) { finish(); return; }
+            raf = requestAnimationFrame(listen);
+          };
+          listen();
+        } catch (e) {
+          /* No AnalyserNode: the hard time stop above still applies, but we
+             cannot tell silence from speech — so never claim nothing was
+             said, or a working mic would be silenced. */
+          spoke = true;
         }
 
         mr.start();
@@ -382,6 +490,19 @@ import { apiSpeak } from "./brain.js";
         }
         /* The recorder stopped (Stop tapped, or the cap fired). Hand the
            clip over; the mic stays withdrawn while transcribing. */
+        /* Nothing was said — say so and do not upload. Billing the visitor's
+           own silence is the easiest cost to avoid. */
+        if (!clip.spoke) {
+          recording = false;
+          composer.classList.remove("rec");
+          recorder.hidden = true;
+          input.hidden = false;
+          stopBtn.hidden = true;
+          updateMicState();
+          speechDeps.onUiUpdate();
+          showToast("Didn't catch that — try again");
+          return;
+        }
         recording = false;
         transcribing = true;
         updateMicState();
