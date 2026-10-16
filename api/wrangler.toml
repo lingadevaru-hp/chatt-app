@@ -1,6 +1,8 @@
 # Worker serves the proxy AND the static frontend in one deploy (no CORS).
 # Frontend bundle lives in ../dist — build it first:  (from repo root) npm run build
-# Then:  cd api && npx wrangler deploy
+# Then, from the repo root:  npm run deploy
+#   (npm run deploy asserts dist/ is an api bundle before shipping — never
+#    call `wrangler deploy` directly, or a demo bundle can go live)
 # Secrets (never in this file):  npx wrangler secret put SARVAM_API_KEY
 name = "chatt"   # existing worker: chatt.lingadevaru203.workers.dev (+ ai.lingadevaru.in)
 main = "src/index.ts"
@@ -18,3 +20,8 @@ DAILY_CEILING = "300"
 CHAT_MODEL = "sarvam-105b-conversations"
 TTS_MODEL = "bulbul:v3"
 TTS_VOICE = "shubh"
+# saaras:v4 is the current default/recommended STT model. "unknown" lets it
+# auto-detect, which is right here: a visitor may speak English or Kannada.
+# The REST endpoint caps a request at 30s — keep CONFIG.maxRecordSeconds at 30.
+STT_MODEL = "saaras:v4"
+STT_LANG = "unknown"
