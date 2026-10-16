@@ -12,12 +12,11 @@ import { CONFIG } from "./config.js";
 import { ensureChat, saveChats, touchChat, titleFrom, settings } from "./store.js";
 import { askBrain } from "./brain.js";
 import { $, plain, showToast, nowISO } from "./utils.js";
-import { pickVoice, stopSpeaking, speechText, recordToBlob, transcribeBlob, canRecord, stopActiveRecording } from "./speech.js";
-import { apiSpeak } from "./brain.js";
+import { pickVoice, stopSpeaking, speechText, speakChunked, recordToBlob, transcribeBlob, canRecord, stopActiveRecording } from "./speech.js";
 
   const callEl = $("#call"), callStatus = $("#callStatus"), callTimer = $("#callTimer"),
     callLines = $("#callLines"), callLive = $("#callLive"), callWaveEl = $("#callWave");
-  const call = { active: false, muted: false, speakerOff: false, state: "idle", tick: null, bars: null, audio: null };
+  const call = { active: false, muted: false, speakerOff: false, state: "idle", tick: null, bars: null };
 
   function buildCallWave() {
     callWaveEl.innerHTML = "";
@@ -81,13 +80,21 @@ import { apiSpeak } from "./brain.js";
       recordToBlob({
         maxSeconds: 25,
         stopOnSilence: true,
-        silenceMs: 1600,
+        /* 1600ms of trailing quiet meant a full second and a half of dead air
+           before the bot reacted — the opposite of a phone call. It is also
+           billed audio. 1000ms still leaves room for a mid-sentence pause. */
+        silenceMs: 1000,
         /* Batch STT gives no interim words, so show a small "…" whenever
            there is voice energy — it tells the visitor the mic is live. */
         onLevel: (l) => { if (call.active) callLive.textContent = l > 0.08 ? "…" : ""; },
       })
         .then((clip) => {
           if (!clip || !call.active) return resolve(null);
+          /* Nothing was said. Do NOT upload: the loop cycles every couple of
+             seconds, so billing silence meant paying over and over — and,
+             worse, it kept ending its own recording before the visitor could
+             finish a sentence, which is why the second turn felt dead. */
+          if (!clip.spoke) return resolve(null);
           return transcribeBlob(clip.blob, clip.type).then(
             (t) => resolve(t || null),
             () => resolve(null),
@@ -127,15 +134,10 @@ import { apiSpeak } from "./brain.js";
 
     if (CONFIG.mode === "api") {
       try {
-        const url = await apiSpeak(clean);
-        await new Promise((resolve) => {
-          const audio = new Audio(url);
-          call.audio = audio;
-          const done = () => { URL.revokeObjectURL(url); if (call.audio === audio) call.audio = null; resolve(); };
-          audio.onended = done;
-          audio.onerror = done;
-          audio.play().catch(done);
-        });
+        /* Chunked: the first sentence starts playing while the rest are still
+           being synthesised. This is the single biggest latency win in a call,
+           because it removes the wait for the WHOLE reply before any sound. */
+        await speakChunked(text);
         return;
       } catch (e) {
         console.warn("[call] Sarvam voice failed, falling back to browser voice:", e && e.message);
@@ -173,7 +175,10 @@ import { apiSpeak } from "./brain.js";
       const heard = await callListen();
       callLive.textContent = "";
       if (!call.active) break;
-      if (!heard) continue;
+      /* Nothing heard: pause before reopening the mic. Without this the loop
+         restarts instantly, hammering getUserMedia and re-recording over the
+         visitor while they are still speaking. */
+      if (!heard) { await new Promise((r) => setTimeout(r, 300)); continue; }
 
       callLine("user", heard);
       setCallState("thinking");
@@ -208,7 +213,6 @@ import { apiSpeak } from "./brain.js";
     call.active = false;
     clearInterval(call.tick); clearInterval(call.bars); call.bars = null;
     stopActiveRecording();   /* otherwise the mic stays open until the cap */
-    if (call.audio) { try { call.audio.pause(); } catch (e) {} call.audio = null; }
     stopSpeaking();
     callLive.textContent = "";
     callEl.classList.remove("show");
@@ -225,7 +229,7 @@ import { apiSpeak } from "./brain.js";
     this.classList.toggle("off", call.muted);
     this.setAttribute("aria-pressed", String(call.muted));
     this.querySelector("use").setAttribute("href", call.muted ? "#i-micoff" : "#i-mic");
-    if (call.muted) { stopActiveRecording(); if (call.audio) { try { call.audio.pause(); } catch (e) {} call.audio = null; } }
+    if (call.muted) stopActiveRecording();
     if (call.active) setCallState(call.state);
   });
   $("#ctlSpeaker").addEventListener("click", function () {
