@@ -195,8 +195,16 @@ import { apiSpeak } from "./brain.js";
     if (recognition) { try { recognition.stop(); } catch (e) {} recognition = null; }
 
     if (auto) showToast("Stopped at " + CONFIG.maxRecordSeconds + " seconds");
-    const text = input.value.trim();
     speechDeps.onUiUpdate();
+    /* The transcript stays in the composer for review/editing — never send
+       on the visitor's behalf (see CONFIG.autoSendVoice). Focus so they can
+       edit straight away; Send/Enter is their call. */
+    input.focus({ preventScroll: true });
+    if (!CONFIG.autoSendVoice) {
+      if (!input.value.trim()) showToast("Didn't catch that — try again");
+      return;
+    }
+    const text = input.value.trim();
     if (text) setTimeout(() => { if (!speechDeps.getBusy()) speechDeps.onSubmit(); }, auto ? 250 : 120);
     else showToast("Didn't catch that — try again");
   }

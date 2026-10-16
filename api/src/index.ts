@@ -14,6 +14,7 @@
 import { Hono, type Context } from "hono";
 import { chatBody, ttsBody } from "./schema";
 import { sarvamChat, sarvamTts, resolveVoice, ProviderError } from "./sarvam";
+import { AnswerCache, MemoCache } from "./cache";
 import { allowRequest, underDailyCeiling, clientIp, type LimiterEnv } from "./limits";
 
 type Env = LimiterEnv & {
@@ -25,7 +26,18 @@ type Env = LimiterEnv & {
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get("/health", (c) => c.json({ ok: true, mode: "proxy" }));
+// Per-isolate caches (same tradeoff as the limiter fallback — documented
+// in cache.ts). Hit rates are observable via /health for the §D report.
+const answerCache = new AnswerCache();
+const ttsMemo = new MemoCache();
+
+app.get("/health", (c) =>
+  c.json({
+    ok: true,
+    mode: "proxy",
+    cache: { answers: answerCache.stats(), tts: ttsMemo.stats() },
+  }),
+);
 
 async function guard(c: Context<{ Bindings: Env }>, route: string) {
   if (!(await underDailyCeiling(c.env, route))) {
@@ -58,9 +70,25 @@ app.post("/chat", async (c) => {
   const denied = await guard(c, "chat");
   if (denied) return denied;
 
-  const { message, history, model } = parsed.data;
+  const { history, model } = parsed.data;
+  // Cost cap (§D5): the model never sees more than 500 chars of visitor
+  // text. Truncate-and-proceed (not reject) so long pastes still answer.
+  const message = parsed.data.message.slice(0, 500);
+  const chatModel = model || c.env.CHAT_MODEL || "sarvam-105b-conversations";
+  // Exact-match cache: repeat questions cost zero model calls. History is
+  // excluded from the key by design (portfolio answers are context-free);
+  // requests carrying files always go to the model.
+  if (!parsed.data.files.length) {
+    const hit = answerCache.get(chatModel, message);
+    if (hit) {
+      c.header("X-Cache", "HIT");
+      return c.json(hit);
+    }
+  }
   try {
-    const out = await sarvamChat(c.env.SARVAM_API_KEY!, model || c.env.CHAT_MODEL || "sarvam-105b-conversations", history, message);
+    const out = await sarvamChat(c.env.SARVAM_API_KEY!, chatModel, history, message);
+    if (!parsed.data.files.length) answerCache.set(chatModel, message, out);
+    c.header("X-Cache", "MISS");
     return c.json(out);
   } catch (e) {
     const pe = e instanceof ProviderError ? e : new ProviderError(502, "provider error");
@@ -81,12 +109,27 @@ app.post("/tts", async (c) => {
     model,
     parsed.data.voice || c.env.TTS_VOICE || "",
   );
+  const memoKey = ttsMemo.key(model, speaker, parsed.data.lang, parsed.data.text);
+  const memoHit = ttsMemo.get(memoKey);
+  if (memoHit) {
+    // Served from the server memo, not re-billed. (POSTs are never
+    // CDN-cacheable, so Cache-Control alone could not do this.)
+    return new Response(memoHit.buffer as ArrayBuffer, {
+      headers: {
+        "Cache-Control": "public, max-age=86400",
+        "Content-Type": "audio/wav",
+        "X-Cache": "HIT",
+      },
+    });
+  }
   try {
     const audio = await sarvamTts(c.env.SARVAM_API_KEY!, model, speaker, parsed.data.lang, parsed.data.text);
+    ttsMemo.set(memoKey, audio);
     // Repeat sentences are served by the CDN, not re-billed.
     const headers: Record<string, string> = {
       "Cache-Control": "public, max-age=86400",
       "Content-Type": "audio/wav",
+      "X-Cache": "MISS",
     };
     if (coerced) headers["X-Voice-Coerced"] = speaker;
     return new Response(audio.buffer as ArrayBuffer, { headers });

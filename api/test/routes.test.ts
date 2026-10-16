@@ -19,7 +19,15 @@ describe("GET /health", () => {
   it("is keyless", async () => {
     const res = await app.request("/health", {}, {});
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, mode: "proxy" });
+    expect(await res.json()).toMatchObject({ ok: true, mode: "proxy" });
+  });
+  it("exposes cache hit-rate counters", async () => {
+    const res = await app.request("/health", {}, {});
+    const body = (await res.json()) as {
+      cache: { answers: { hits: number }; tts: { hits: number } };
+    };
+    expect(typeof body.cache.answers.hits).toBe("number");
+    expect(typeof body.cache.tts.hits).toBe("number");
   });
 });
 
@@ -60,7 +68,7 @@ describe("POST /chat", () => {
     expect(url).toBe("https://api.sarvam.ai/v1/chat/completions");
     const sent = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(sent.model).toBe("sarvam-105b-conversations");
-    expect(sent.max_tokens).toBe(400);
+    expect(sent.max_tokens).toBe(280);
     expect(sent.reasoning_effort).toBeNull(); // thinking off, else the cap gets eaten
     expect((init.headers as Record<string, string>)["api-subscription-key"]).toBe("test-key");
   });
@@ -80,6 +88,43 @@ describe("POST /chat", () => {
     const mk = () => app.request("/chat", { method: "POST", body: JSON.stringify({ message: "hi" }) }, capped);
     expect((await mk()).status).toBe(200);
     expect((await mk()).status).toBe(429);
+  });
+  it("serves repeat questions from cache with ZERO provider calls", async () => {
+    const provider = vi.fn(
+      async () => new Response(JSON.stringify({ choices: [{ message: { content: "Cached me" } }] })),
+    );
+    vi.stubGlobal("fetch", provider);
+    const mk = () =>
+      app.request("/chat", { method: "POST", body: JSON.stringify({ message: "What SKILLS?" }) }, ENV);
+    const first = await mk();
+    expect(first.status).toBe(200);
+    expect(first.headers.get("X-Cache")).toBe("MISS");
+    const second = await app.request(
+      "/chat",
+      { method: "POST", body: JSON.stringify({ message: "what skills?!" }) },
+      ENV,
+    );
+    expect(second.status).toBe(200);
+    expect(second.headers.get("X-Cache")).toBe("HIT");
+    expect((await second.json()) as { reply: string }).toMatchObject({ reply: "Cached me" });
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+  it("truncates visitor messages to 500 chars before the model", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }))),
+    );
+    await app.request(
+      "/chat",
+      { method: "POST", body: JSON.stringify({ message: "y".repeat(1500) }) },
+      ENV,
+    );
+    const [, init] = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls[0] as [string, RequestInit];
+    const sent = JSON.parse(init.body as string) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const userMsg = sent.messages[sent.messages.length - 1].content;
+    expect(userMsg.length).toBe(500);
   });
 });
 
@@ -107,5 +152,21 @@ describe("POST /tts", () => {
     expect(res.headers.get("Content-Type")).toBe("audio/wav");
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=86400");
     expect(new TextDecoder().decode(new Uint8Array(await res.arrayBuffer()))).toBe("RIFFfake-wav-bytes");
+  });
+  it("memos repeat synthesis: provider called once, second served memo", async () => {
+    const wav = btoa("RIFFmemo-bytes");
+    const provider = vi.fn(
+      async () => new Response(JSON.stringify({ request_id: "r2", audios: [wav] })),
+    );
+    vi.stubGlobal("fetch", provider);
+    const mk = () =>
+      app.request("/tts", { method: "POST", body: JSON.stringify({ text: "hello again", lang: "en-IN" }) }, ENV);
+    const first = await mk();
+    expect(first.headers.get("X-Cache")).toBe("MISS");
+    const second = await mk();
+    expect(second.status).toBe(200);
+    expect(second.headers.get("X-Cache")).toBe("HIT");
+    expect(new TextDecoder().decode(new Uint8Array(await second.arrayBuffer()))).toBe("RIFFmemo-bytes");
+    expect(provider).toHaveBeenCalledTimes(1);
   });
 });

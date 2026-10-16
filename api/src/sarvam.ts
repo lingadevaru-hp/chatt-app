@@ -44,13 +44,15 @@ export function resolveVoice(model: string, voice: string): { speaker: string; c
   return { speaker: fallback, coerced: true };
 }
 
-/** Short system prompt, portfolio facts only — every token bills every turn. */
+/** System prompt, portfolio facts only — every token bills every turn.
+    ~55 words (~75 tokens). Replies are spoken: the <60-word instruction
+    keeps answers short, cheap, and listenable. */
 export const SYSTEM_PROMPT =
-  "You are Thoshan's portfolio assistant. Thoshan is a college student and " +
-  "developer in India (JavaScript/TypeScript, Python; React, Node/Express, REST, " +
-  "websockets; speech-to-text/TTS/LLM work). Open to freelance, internships, " +
-  "collaborations. Contact via the email in the site's Settings. " +
-  "Answer briefly (under 120 words), plain markdown, no invented facts.";
+  "You are Thoshan's portfolio assistant. Thoshan: college student and " +
+  "developer in India. Stack: JavaScript/TypeScript, Python; React, " +
+  "Node/Express, REST, websockets; speech-to-text, TTS, LLMs. Open to " +
+  "freelance, internships, collaborations. Contact: email in the site's " +
+  "Settings. Answer in under 60 words, plain markdown. Never invent facts.";
 
 export interface ChatResult {
   reply: string;
@@ -73,7 +75,7 @@ export async function sarvamChat(
         ...history,
         { role: "user", content: message },
       ],
-      max_tokens: 400, // replies are spoken; long ones cost more and read worse
+      max_tokens: 280, // spoken replies: <60 words instructed, 280 caps cost
       reasoning_effort: null, // thinking off so the first word arrives fast
       temperature: 0.2, // provider default when reasoning is off; pin it (defaults move)
     }),

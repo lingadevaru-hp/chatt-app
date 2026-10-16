@@ -23,7 +23,11 @@ export const CONFIG = {
     ttsVoice: "anushka",
 
     maxRecordSeconds: 30,   // hard stop for one voice recording
-    historyWindow: 12,      // previous messages sent as context
+    historyWindow: 6,       // previous messages sent as context. Six turns is
+                            // plenty for a portfolio FAQ bot; every extra turn
+                            // is billed on every request. Quality check: review
+                            // the first week of live logs for mid-thread
+                            // follow-ups that lose context.
     maxAttachments: 4,      // per message
     maxAttachmentMB: 4,     // per file
 
@@ -32,7 +36,17 @@ export const CONFIG = {
        second spoken turn inside the same message is not possible. It comes
        back when the composer is cleared for the next prompt.
        Set false to allow repeated captures. */
-    oneVoicePerTurn: true
+    oneVoicePerTurn: true,
+
+    /* NEVER auto-send a voice transcript. When a recording ends the text
+       lands in the composer for review/editing; the visitor taps Send.
+       true restores the old send-on-stop behaviour. */
+    autoSendVoice: false,
+
+    /* Attach menu. true = the + opens the Photos / Take photo / Files menu
+       (each row sets accept/capture, then hands off to the native OS picker).
+       false = the + skips the menu and opens the OS file manager directly. */
+    attachMenu: true,
   };
 
   

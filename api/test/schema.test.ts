@@ -10,8 +10,8 @@ describe("chatBody", () => {
     expect(chatBody.safeParse({ message: "" }).success).toBe(false);
     expect(chatBody.safeParse({ message: "x".repeat(2001) }).success).toBe(false);
   });
-  it("caps history at 12 and files at 4", () => {
-    const hist = Array.from({ length: 13 }, (_, i) => ({ role: "user" as const, content: `m${i}` }));
+  it("caps history at 6 and files at 4", () => {
+    const hist = Array.from({ length: 7 }, (_, i) => ({ role: "user" as const, content: `m${i}` }));
     expect(chatBody.safeParse({ message: "hi", history: hist }).success).toBe(false);
     const files = Array.from({ length: 5 }, (_, i) => ({ name: `f${i}.txt` }));
     expect(chatBody.safeParse({ message: "hi", files }).success).toBe(false);

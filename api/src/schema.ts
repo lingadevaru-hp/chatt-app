@@ -17,7 +17,7 @@ const attachedFile = z.object({
 
 export const chatBody = z.object({
   message: z.string().min(1).max(2000),
-  history: z.array(historyItem).max(12).default([]),
+  history: z.array(historyItem).max(6).default([]),
   files: z.array(attachedFile).max(4).default([]),
   model: z.enum(["sarvam-105b-conversations", "sarvam-105b"]).optional(),
 });
@@ -28,7 +28,7 @@ const LANGS = [
 ] as const;
 
 export const ttsBody = z.object({
-  // Spoken replies are capped upstream (max_tokens 400 ≈ 1600 chars);
+  // Spoken replies are capped upstream (max_tokens 280 ≈ 1100 chars);
   // 2000 chars stays under Bulbul v3's 2500-char request ceiling.
   text: z.string().min(1).max(2000),
   lang: z.enum(LANGS).default("en-IN"),

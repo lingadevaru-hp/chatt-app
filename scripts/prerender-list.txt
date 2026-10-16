@@ -1,0 +1,2 @@
+# One exact model reply per line. Fill from proxy logs after a week live.
+# Keep under ~10 lines — these become committed audio files.

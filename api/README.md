@@ -6,7 +6,7 @@ Worker serves the static frontend AND the API in one deploy — no CORS.
 
 ```bash
 # 1. Frontend, live bundle (source default stays "demo"):
-VITE_MODE=api npm run build          # from repo root → dist/
+VITE_MODE=api npm run build:prod     # from repo root → dist/ (assert fails without the flag)
 
 # 2. Key as a secret (never in code, never in wrangler.toml):
 cd api

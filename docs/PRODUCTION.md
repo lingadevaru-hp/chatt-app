@@ -12,6 +12,9 @@ Changelog:
   HTML partials deferred (markup already sectioned; plugin cost > benefit).
 - **1.9.0** — API proxy on Cloudflare Workers (Hono + TS + Zod), rate
   limiting + daily ceiling, build-time live-mode switch.
+- **1.10.0** — no-auto-send voice (`CONFIG.autoSendVoice=false`), attach
+  direct-picker flag, cost pass (answer cache, TTS memo, 280/6/500 caps),
+  `build:prod` assert, X-Voice-Coerced console surface, client TTS clip.
 
 ---
 
@@ -35,14 +38,18 @@ a placeholder only.
 ## 2 · THE PROXY (`api/`, Hono + TypeScript, Zod-validated)
 
 ```
-POST /chat  { message, history[{role,content}], files?[], model? }
+// Responses carry X-Cache: HIT on answer-cache or TTS-memo hits.
+// Visitor messages are truncated to 500 chars before the model (§D5).
+POST /chat  { message, history[{role,content}] (≤6), files?[], model? }
             → Sarvam POST /v1/chat/completions, model sarvam-105b-conversations
             → { reply: string, thoughts: string[] }
 POST /tts   { text, lang, voice?, model? }
             → Sarvam POST /text-to-speech, returns base64 in `audios`
             → raw audio bytes (audio/wav)
             → headers: Cache-Control: public, max-age=86400
-GET  /health → { ok: true } (keyless; deploy + uptime checks only)
+GET  /health → { ok: true, cache: { answers: {hits,misses,size},
+                                   tts: {hits,misses,size} } }
+            (keyless; deploy checks + live hit-rate observation)
 ```
 
 Verified against docs.sarvam.ai (10-2026), not guessed:
@@ -64,18 +71,31 @@ Verified against docs.sarvam.ai (10-2026), not guessed:
   default) the proxy coerces unknown voices to `shubh` and sets
   `X-Voice-Coerced` — a stale default degrades instead of 400ing.
   (`api/test/schema.test.ts` pins this.)
-- Caps mirror the frontend: message ≤2000 chars, history ≤12, files ≤4,
-  TTS text ≤2000 chars (v3 ceiling is 2500).
+- Caps mirror the frontend: message ≤2000 chars transport (truncated to
+  500 before the model), history ≤6, files ≤4,
+  TTS text ≤2000 chars (v3 ceiling is 2500; client clips too).
 
 ## 3 · COST — HOW TO GET TO NEAR ZERO
 
-Traffic: ~6 visitors/month, ~5 min each. Prices below are Sarvam's public
-pricing (docs.sarvam.ai/api/getting-started/pricing, 10-2026):
+Traffic: ~6 visitors/month, ~5 min each (~40 short messages).
 
-- Chat (`sarvam-105b-conversations`): ₹15 in / ₹5 cached-in / ₹60 out per 1M.
+PRICING NOTE (10-2026): Sarvam's two pricing pages disagree on chat rates —
+the marketing page says ₹15 in / ₹60 out per 1M, the docs page says ₹29.28 /
+₹73.2. Neither of us can see the account billing page from here, so every
+estimate below uses the HIGHER docs-page rate (conservative). Owner: confirm
+against Billing before trusting the paise. TTS agrees on both pages
+(`bulbul:v3` ₹30 / 10K chars).
+
+- Chat (`sarvam-105b-conversations`): ₹29.28 in / ₹10.98 cached-in / ₹73.2
+  out per 1M (docs page; marketing says ₹15/₹60).
 - TTS (`bulbul:v3`): ₹30 / 10K chars. (`bulbul:v4-flash` is ₹20 / 10K —
   left as a documented upgrade; it needs persona speaker IDs.)
 - Browser STT/TTS (the default): ₹0, private, no round trip.
+- Cheapest-model check (docs pricing, 10-2026): `sarvam-105b-conversations`
+  (₹29.28/₹73.2) undercuts `gemma4` (₹35/₹90), `deepseekv4.1-flash`
+  (₹25/₹105 out) and `glm5.3` (₹126/₹390). No reasoning model anywhere —
+  `reasoning_effort: null` is pinned, and reasoning tokens would bill as
+  output. Stays as deployed.
 
 Levers, cheapest first (all still apply):
 
@@ -84,16 +104,24 @@ b) Prepaid credits with **AUTO-RECHARGE OFF**. At zero balance Sarvam
    answers 402 and stops — it cannot overspend. The proxy surfaces
    provider 402/401 as 502 "assistant unavailable", never a retry loop.
 c) Pre-render audio for the ~10 most common answers as static files — ₹0
-   forever (mapping point: `askBrain()` in `js/brain.js`).
+   forever. Mechanism shipped: `js/prerendered.js` + `scripts/prerender.sh`
+   + `audio/`. Files need a key + a week of live logs to pick the texts —
+   owner step (see §13).
 d) Short system prompt (`SYSTEM_PROMPT` in `api/src/sarvam.ts`,
    portfolio facts only — every token bills every turn).
-e) History capped at 12 (`historyWindow`); raising it multiplies input cost.
-f) Output capped at 400 tokens in the proxy (spoken replies; long ones
-   cost more and read worse).
-g) TTS cached at the CDN (`Cache-Control`, §2).
+e) History capped at 6 (`historyWindow`); raising it multiplies input cost.
+f) Output capped at 280 tokens in the proxy + "under 60 words" instruction
+   (spoken replies; long ones cost more and read worse).
+g) TTS memoed server-side (`MemoCache`, 24 h) AND `Cache-Control` on the
+   response. The memo is the real guard: POSTs are never CDN-cacheable, so
+   the header alone could not prevent re-billing — measured, not assumed.
 h) Per-IP sliding window + daily ceiling (§5) so one scraper can't drain you.
 i) Cheaper model/voice selected; server TTS only when the visitor taps
-   read-aloud — browser speech otherwise.
+   read-aloud — browser speech otherwise (verified: zero `/tts` traffic in
+   demo mode).
+j) Exact-match answer cache (`AnswerCache`, 6 h TTL, 200-entry cap):
+   repeat questions cost zero model calls. Hit rate observable live at
+   `GET /health`.
 
 ## 4 · STAYING INSIDE THE PLAN
 
@@ -121,10 +149,12 @@ i) Cheaper model/voice selected; server TTS only when the visitor taps
 
 ## 6 · CACHING SPEECH
 
-- `Cache-Control: public, max-age=86400` on `/tts` — repeats served by the
-  CDN, not re-billed.
-- Pre-render the top answers once, commit the files, play them directly —
-  zero API calls. Mapping point: `askBrain()` in `js/brain.js`.
+- Server memo (`MemoCache`, 24 h TTL, 30-entry cap) + `Cache-Control:
+  public, max-age=86400` on `/tts`. The memo does the work; the header
+  covers GET/CDN paths only.
+- Pre-render the top answers once (`scripts/prerender.sh` → `audio/`,
+  mapped in `js/prerendered.js`, checked in `apiSpeak()` before any
+  network), play them directly — zero API calls on any isolate.
 - Browser speech stays the default. Move to server TTS only if the voice
   quality is worth the cost to you.
 
@@ -140,10 +170,10 @@ i) Cheaper model/voice selected; server TTS only when the visitor taps
 ## 8 · GOING LIVE CHECKLIST
 
 - [ ] `cd api && wrangler secret put SARVAM_API_KEY` (key set, never in code)
-- [ ] Frontend built live: `VITE_MODE=api npm run build` (source stays demo)
+- [ ] Frontend built live: `VITE_MODE=api npm run build:prod` (refuses without the flag; source stays demo)
 - [ ] `cd api && wrangler deploy` (Worker serves `../dist` + proxy, no CORS)
 - [ ] `CHAT_MODEL` / `TTS_MODEL` / `TTS_VOICE` set to what you pay for
-- [ ] `max_tokens` capped (400, in code), thinking off (`reasoning_effort: null`)
+- [ ] `max_tokens` capped (280, in code), thinking off (`reasoning_effort: null`)
 - [ ] Upstash env set for shared rate limiting (else per-isolate fallback)
 - [ ] Dashboard: auto-recharge OFF, spend alert on
 - [ ] KB (`js/knowledge.js`) holds real projects, links, contact
@@ -179,7 +209,9 @@ i) Cheaper model/voice selected; server TTS only when the visitor taps
 ## 11 · UI CONVENTIONS THAT MUST BE PRESERVED
 
 - ONE VOICE CAPTURE PER TURN (`maxRecordSeconds` 30 s; mic withdrawn via
-  `updateMicState`, back for the next prompt).
+  `updateMicState`, back for the next prompt). Transcripts are NEVER
+  auto-sent (`CONFIG.autoSendVoice=false`): they land in the composer for
+  review, focus included; Send is the visitor's call.
 - KEYBOARD POLICY: no autofocus; focus restored after send; cancel only
   `pointerdown` on Send, never `touchstart`.
 - ATTACH MENU anchored inside `.composer` (`position:relative`).
@@ -194,13 +226,29 @@ i) Cheaper model/voice selected; server TTS only when the visitor taps
 
 ## 12 · RUNNING COST (definition-of-done statement)
 
-At ~6 visitors × ~5 min/month (~40 short messages): chat costs on the
-order of ₹1–2 (roughly 30–50K input tokens @ ₹15/1M plus ~15K output @
-₹60/1M). Server TTS is the only real variable: worst case — every reply
-read aloud server-side — is ~25K chars ≈ ₹75 at Bulbul v3 rates; typical
-case is near ₹0 because read-aloud defaults to free browser speech, TTS
-responses cache for a day, and the top answers can be pre-rendered as
-static files. Cloudflare Workers free tier (100k req/day) covers ~40
-requests/month several thousand times over, and proxy-waiting consumes
-negligible CPU time. Idle months are ₹0. Expected total: **₹0–80/month**,
-usually at the bottom of that range.
+Measured before → after the 1.10.0 cost pass (chars/4 token rule, docs-page
+rates — the conservative ones):
+
+| lever | before | after |
+|---|---|---|
+| system prompt | 45 words / ~88 tok | 43 words / ~85 tok (was already small; the win is the <60-word instruction) |
+| context window | 12 msgs (≤48K chars worst) | 6 msgs (≤24K chars worst) |
+| visitor message to model | ≤2000 chars | truncated to 500 |
+| max output | 400 tok | 280 tok |
+| repeat questions | full price | ₹0 (answer cache; `X-Cache: HIT`) |
+| repeat synthesis | full price (POSTs bypass CDN) | ₹0 in-isolate (TTS memo; `X-Cache: HIT`) |
+
+Per line item at ~40 messages/month:
+
+- Chat, typical (~460 in-tok + ~80 out-tok): ≈ ₹0.02/msg → **≈ ₹0.80/mo**.
+- Chat, pathological (6.2K in + 280 out): ≈ ₹0.20/msg — bounded, not typical.
+- Server TTS: ~320 chars/reply → ≈ ₹0.96 per spoken reply. All-spoken
+  worst case ≈ ₹38/mo; typical ≈ ₹0 (browser speech default + memo).
+- Workers free tier: ~80 req/mo against 100k/day — ₹0. Idle months ₹0.
+
+Cache hit rate: no live traffic yet, so no live number exists — counters
+are live at `GET /health` (`cache.answers`, `cache.tts`); unit tests pin
+100% on repeats. Expected high for a fixed-KB FAQ bot; confirm after week one.
+
+Expected total: **₹0–40/month** (was ₹0–80), usually under ₹5. The remaining
+variance is entirely "how many visitors tap read-aloud".

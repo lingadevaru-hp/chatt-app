@@ -6,6 +6,7 @@ import { CONFIG } from "./config.js";
 import { KB, FALLBACK } from "./knowledge.js";
 import { settings } from "./store.js";
 import { sleep } from "./utils.js";
+import { prerenderedUrl } from "./prerendered.js";
 
   const rxEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -56,14 +57,27 @@ import { sleep } from "./utils.js";
     return { thoughts: data.thoughts || ["Answered by the language model."], reply: data.reply || data.text || "" };
   }
 
-  /* Live TTS. The proxy returns audio bytes. */
+  /* Live TTS. The proxy returns audio bytes. Order of preference:
+       1. committed pre-rendered file (₹0, any isolate),
+       2. /tts (server memo, then provider).
+     Sarvam rejects >2500 chars; the proxy 400s >2000. Truncate client-side
+     too so a runaway reply degrades instead of erroring mid-call — replies
+     are capped at ~280 tokens upstream, so this never binds in practice. */
   export async function apiSpeak(text) {
+    const local = prerenderedUrl(text);
+    if (local) return local;
+    const clipped = String(text).slice(0, 2000);
     const res = await fetch(CONFIG.apiBase + "/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text, model: CONFIG.ttsModel, voice: CONFIG.ttsVoice, lang: settings.lang })
+      body: JSON.stringify({ text: clipped, model: CONFIG.ttsModel, voice: CONFIG.ttsVoice, lang: settings.lang })
     });
     if (!res.ok) throw new Error("tts " + res.status);
+    /* The proxy coerces model-incompatible voices (e.g. anushka on v3) and
+       says so via X-Voice-Coerced. Log it once per reply so a silently
+       substituted voice is never a mystery. */
+    const coerced = res.headers.get("X-Voice-Coerced");
+    if (coerced) console.info("[tts] voice coerced by proxy →", coerced);
     return URL.createObjectURL(await res.blob());
   }
 

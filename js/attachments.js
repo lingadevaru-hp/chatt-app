@@ -47,8 +47,21 @@ import { $, $$, icon, esc, readAsDataURL, humanSize, showToast } from "./utils.j
     attachBtn.setAttribute("aria-expanded", "false");
   }
 
+  function openOsPicker(kind) {
+    /* Every attach path ends here: the OS file picker does the choosing.
+       That is the native behaviour on mobile and desktop alike. */
+    fileInput.value = "";
+    fileInput.accept = ATTACH_ACCEPT[kind] || "";
+    fileInput.multiple = kind !== "camera";
+    if (kind === "camera") fileInput.setAttribute("capture", "environment");
+    else fileInput.removeAttribute("capture");
+    fileInput.click();
+  }
+
   attachBtn.addEventListener("click", (e) => {
     e.stopPropagation();
+    /* Single-tap mode: no menu, straight to the OS file manager. */
+    if (!CONFIG.attachMenu) { openOsPicker("all"); return; }
     const open = attachPop.hidden;
     attachPop.hidden = !open;
     attachBtn.setAttribute("aria-expanded", String(open));
@@ -57,12 +70,7 @@ import { $, $$, icon, esc, readAsDataURL, humanSize, showToast } from "./utils.j
   $$("[data-attach]", attachPop).forEach((btn) => btn.addEventListener("click", () => {
     const kind = btn.dataset.attach;
     closeAttachMenu();
-    fileInput.value = "";
-    fileInput.accept = ATTACH_ACCEPT[kind] || "";
-    fileInput.multiple = kind !== "camera";
-    if (kind === "camera") fileInput.setAttribute("capture", "environment");
-    else fileInput.removeAttribute("capture");
-    fileInput.click();
+    openOsPicker(kind);
   }));
 
   document.addEventListener("click", (e) => {
