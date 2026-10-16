@@ -16,6 +16,7 @@ const composer = $("#composer"), input = $("#input"), micBtn = $("#micBtn"),
   stopBtn = $("#stopBtn"), sendBtn = $("#sendBtn"), recorder = $("#recorder"),
   wave = $("#wave"), timerEl = $("#timer");
 import { apiSpeak } from "./brain.js";
+import { apiFetch } from "./turnstile.js";
 
   let voices = [], speakBtnActive = null;
 
@@ -288,7 +289,7 @@ import { apiSpeak } from "./brain.js";
      tell "nothing heard" (empty string) apart from "the call failed". */
   export async function transcribeBlob(blob, type) {
     if (!blob || !blob.size) throw new Error("empty audio");
-    const res = await fetch(CONFIG.apiBase + "/stt", {
+    const res = await apiFetch(CONFIG.apiBase + "/stt", {
       method: "POST",
       headers: { "Content-Type": type },
       body: blob,

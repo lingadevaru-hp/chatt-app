@@ -7,6 +7,7 @@ import { KB, FALLBACK } from "./knowledge.js";
 import { settings } from "./store.js";
 import { sleep } from "./utils.js";
 import { prerenderedUrl } from "./prerendered.js";
+import { apiFetch } from "./turnstile.js";
 
   const rxEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -50,7 +51,10 @@ import { prerenderedUrl } from "./prerendered.js";
      Attachments are sent as `files` (data URLs) when present — extend the
      proxy to forward them as multimodal parts if your model supports it. */
   export async function apiReply(text, history, files) {
-    const res = await fetch(CONFIG.apiBase + "/chat", {
+    /* apiFetch attaches the Turnstile token and retries once after
+       re-verifying on a 403 — the Worker sets a 1h session cookie after
+       the first verification, so later calls skip the challenge. */
+    const res = await apiFetch(CONFIG.apiBase + "/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -76,7 +80,7 @@ import { prerenderedUrl } from "./prerendered.js";
     const local = prerenderedUrl(text);
     if (local) return local;
     const clipped = String(text).slice(0, 2000);
-    const res = await fetch(CONFIG.apiBase + "/tts", {
+    const res = await apiFetch(CONFIG.apiBase + "/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       /* no model/voice — the Worker decides (TTS_MODEL / TTS_VOICE env), so a

@@ -29,3 +29,7 @@ TTS_VOICE = "shubh_enhi_companion"
 # The REST endpoint caps a request at 30s — keep CONFIG.maxRecordSeconds at 30.
 STT_MODEL = "saaras:v4"
 STT_LANG = "unknown"
+# Public Turnstile site key (safe to expose — the widget needs it).
+# Secret goes via `npx wrangler secret put TURNSTILE_SECRET` (never here).
+# Without the secret the Worker runs unprotected (backward compatible).
+TURNSTILE_SITE_KEY = "0x4AAAAAAENqS_v4DQqG_Ycd"
