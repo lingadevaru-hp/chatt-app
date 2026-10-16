@@ -16,6 +16,13 @@ import { Hono, type Context } from "hono";
 import { chatBody, ttsBody } from "./schema";
 import { CACHE_SEED } from "../../shared/knowledge.js";
 import { sarvamChat, sarvamTts, sarvamStt, resolveTtsTarget, ProviderError } from "./sarvam";
+import {
+  verifyTurnstile,
+  makeSession,
+  checkSession,
+  getSessionCookie,
+  SESSION_COOKIE_NAME,
+} from "./turnstile";
 import { AnswerCache, MemoCache } from "./cache";
 import { allowRequest, underDailyCeiling, clientIp, type LimiterEnv } from "./limits";
 
@@ -26,6 +33,8 @@ type Env = LimiterEnv & {
   TTS_VOICE?: string;
   STT_MODEL?: string;
   STT_LANG?: string;
+  TURNSTILE_SECRET?: string;
+  TURNSTILE_SITE_KEY?: string;
 };
 
 /* 30s of webm/opus is roughly 60-120 KB; 2 MB is generous headroom without
@@ -49,7 +58,37 @@ app.get("/health", (c) =>
   }),
 );
 
+/* Public site key for the Turnstile widget. The secret never leaves the
+   Worker — the frontend fetches this and renders the widget with it. */
+app.get("/turnstile-config", (c) =>
+  c.json({ siteKey: c.env.TURNSTILE_SITE_KEY || "" }),
+);
+
 async function guard(c: Context<{ Bindings: Env }>, route: string) {
+  /* Turnstile bot protection. If TURNSTILE_SECRET is set, require a valid
+     session cookie or a fresh Turnstile token — otherwise bots burn Sarvam
+     credits. Unset secret = protection off (backward compatible). A valid
+     token earns an HttpOnly session cookie (1h) so later calls skip the
+     challenge. */
+  if (c.env.TURNSTILE_SECRET) {
+    const ip = clientIp(c.req.raw);
+    if (!(await checkSession(getSessionCookie(c.req.raw), ip, c.env.TURNSTILE_SECRET))) {
+      const ok = await verifyTurnstile(
+        c.req.header("cf-turnstile-response"),
+        ip,
+        c.env.TURNSTILE_SECRET,
+      );
+      if (!ok) {
+        return c.json({ error: "human verification required", needTurnstile: true }, 403);
+      }
+      const session = await makeSession(ip, c.env.TURNSTILE_SECRET);
+      c.header(
+        "Set-Cookie",
+        `${SESSION_COOKIE_NAME}=${session}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600`,
+      );
+    }
+  }
+
   if (!(await underDailyCeiling(c.env, route))) {
     return c.json({ error: "daily budget exhausted — try again tomorrow" }, 429);
   }
