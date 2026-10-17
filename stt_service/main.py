@@ -10,7 +10,7 @@ Endpoints:
 Deploy: render.yaml builds this + the static frontend on Render.
 No Cloudflare Worker needed.
 """
-import os, io, json, zipfile, tempfile, logging, base64
+import os, json, zipfile, tempfile, logging, base64, subprocess
 from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse, Response
@@ -51,15 +51,40 @@ def _ensure_vosk():
         return
     import vosk
     if not MODEL_PATH.exists():
-        log.info("Downloading Vosk Indian English model (~54MB)...")
+        MODEL_ROOT.mkdir(parents=True, exist_ok=True)
+        log.info("Downloading Vosk Indian English model (~54MB) — first cold start only...")
         import urllib.request
-        zip_path = Path(tempfile.gettempdir()) / "vosk-model.zip"
-        urllib.request.urlretrieve(MODEL_URL, str(zip_path))
+        zip_path = MODEL_ROOT / "vosk-model.zip"
+        try:
+            urllib.request.urlretrieve(MODEL_URL, str(zip_path))
+        except Exception as e:
+            log.error("Vosk model download failed: %s", str(e)[:300])
+            raise HTTPException(500, "speech model unavailable")
         with zipfile.ZipFile(str(zip_path)) as z:
             z.extractall(str(MODEL_ROOT))
         zip_path.unlink()
     _vosk_model = vosk.Model(str(MODEL_ROOT))
     log.info("Vosk model loaded")
+
+
+def decode_audio_to_pcm16(raw: bytes) -> bytes:
+    """Decode any browser audio (webm/opus, etc.) to 16kHz mono s16le PCM via ffmpeg.
+
+    soundfile/libsndfile cannot decode webm/opus, so ffmpeg is the only
+    reliable path. Render's build installs ffmpeg (see render.yaml).
+    """
+    proc = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error",
+         "-i", "pipe:0",
+         "-ar", "16000", "-ac", "1",
+         "-f", "s16le", "-acodec", "pcm_s16le", "pipe:1"],
+        input=raw, capture_output=True, timeout=60,
+    )
+    if proc.returncode != 0 or not proc.stdout:
+        log.error("ffmpeg decode failed: %s",
+                  proc.stderr.decode(errors="ignore")[:300])
+        raise HTTPException(500, "audio decode failed")
+    return proc.stdout
 
 
 # ── Request schemas ─────────────────────────────────────────────────────
@@ -137,40 +162,17 @@ STRICT SCOPE
 async def stt(audio: UploadFile = File(...)):
     _ensure_vosk()
     import vosk
-    import soundfile as sf
-    import numpy as np
 
     raw = await audio.read()
     if not raw:
         raise HTTPException(400, "empty audio")
 
-    # Browser sends webm/opus; libsndfile (via soundfile) decodes it directly.
-    # Vosk needs 16kHz mono PCM16; resample if needed.
-    try:
-        data, sr = sf.read(io.BytesIO(raw))
-    except Exception as e:
-        log.error("soundfile decode failed: %s", str(e)[:300])
-        raise HTTPException(500, "audio decode failed")
-
-    # Convert to mono
-    if data.ndim > 1:
-        data = data.mean(axis=1)
-
-    # Resample to 16kHz if needed (linear interpolation — fine for speech)
-    if sr != 16000:
-        import math
-        ratio = 16000 / sr
-        new_len = int(len(data) * ratio)
-        indices = np.arange(new_len) / ratio
-        data = np.interp(indices, np.arange(len(data)), data)
-
-    # Convert to int16 PCM
-    if data.dtype != np.int16:
-        data = np.clip(data, -1.0, 1.0)
-        data = (data * 32767).astype(np.int16)
+    # Browser sends webm/opus; ffmpeg decodes it to 16kHz mono s16le PCM
+    # that Vosk consumes directly (soundfile/libsndfile cannot decode webm).
+    pcm = decode_audio_to_pcm16(raw)
 
     rec = vosk.KaldiRecognizer(_vosk_model, 16000)
-    rec.AcceptWaveform(data.tobytes())
+    rec.AcceptWaveform(pcm)
     result = json.loads(rec.FinalResult())
     return JSONResponse({"transcript": result.get("text", "").strip()})
 
