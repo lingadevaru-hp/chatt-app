@@ -1,23 +1,38 @@
 # Render blueprint — deploys the whole app on Render (no Cloudflare Worker).
 #
-# Services:
-#   chatt-api        Python Web Service — Vosk STT + Sarvam chat/TTS proxy
-#   chatt-frontend   Static Site — the Vite-built frontend
+# TWO SERVICES (Render's recommended way):
+#   1. chatt-api      Python Web Service — Vosk STT + Sarvam chat/TTS proxy
+#   2. chatt-frontend Static Site — the Vite-built frontend
 #
-# After the first deploy:
-#   1. Open the Render dashboard → chatt-api → copy its external URL
-#      (e.g. https://chatt-api.onrender.com)
-#   2. chatt-frontend → Environment → set VITE_API_BASE to that URL
-#   3. Redeploy chatt-frontend
+# STEP-BY-STEP (follow these in the Render dashboard):
 #
-# Secrets: set SARVAM_API_KEY in the Render dashboard (never in this file).
+# 1. Click "New Web Service" → connect GitHub → select lingadevaru-hp/chatt-app
+#    - Environment: Python
+#    - Root Directory: stt_service
+#    - Build Command: pip install -r requirements.txt && apt-get update && apt-get install -y ffmpeg
+#    - Start Command: uvicorn main:app --host 0.0.0.0 --port $PORT
+#    - Add Environment Variable: SARVAM_API_KEY = your key (Secret: Yes)
+#    - Click "Create Web Service"
+#
+# 2. Copy the web service URL Render gives you (e.g. https://chatt-api.onrender.com)
+#
+# 3. Click "New Static Site" → connect GitHub → select lingadevaru-hp/chatt-app
+#    - Build Command: npm install && VITE_MODE=api npm run build
+#    - Publish Path: dist
+#    - Add Environment Variable: VITE_API_BASE = https://chatt-api.onrender.com (use your URL from step 2)
+#    - Add Environment Variable: VITE_MODE = api
+#    - Click "Create Static Site"
+#
+# 4. Done. Visit your static site URL — it calls the Python backend for /chat, /tts, /stt.
+#
+# Secrets: SARVAM_API_KEY is set in the dashboard (never in this file).
 
 services:
   - type: web
     name: chatt-api
     env: python
     plan: free
-    rootDir: stt-service
+    rootDir: stt_service
     buildCommand: pip install -r requirements.txt && apt-get update && apt-get install -y ffmpeg
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:

@@ -17,11 +17,21 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
+from fastapi.middleware.cors import CORSMiddleware
 
 log = logging.getLogger("chatt")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
 app = FastAPI(title="Thoshan Assistant API")
+
+# CORS — the static frontend lives on a different Render URL, so allow it.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],   # lock this to your frontend URL after you know it
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ── Sarvam config (key held server-side, never in the browser) ──────────
 SARVAM_API_KEY = os.environ.get("SARVAM_API_KEY", "")
