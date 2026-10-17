@@ -165,51 +165,55 @@ Split into the structure in §4, in the order CSS → HTML → JS, using the lab
 Keep ids and class names identical. Vite is fine as a bundler if you want one;
 keep the output a static site.
 
-### Phase 2 — Build the API proxy
-Two routes. Deploy to **Cloudflare Workers** (free tier allows commercial use and
-100k requests/day; Workers bill CPU time, not wall time, so a proxy that waits on
-an upstream API consumes almost none of its budget).
+### Phase 2 — Build the API backend
+Two routes plus STT. Deploy to **Render** (free tier, web service + static site).
 
-Use Hono + TypeScript. Validate request bodies with Zod.
+Use Python FastAPI (`stt-service/main.py`). Validate request bodies with Pydantic.
 
 ```
 POST /chat
   request   { message: string, history: {role,content}[], files?: [] }
-  behaviour call the provider's chat endpoint with the key attached
+  behaviour proxy to Sarvam chat (SARVAM_API_KEY held server-side)
   response  { reply: string, thoughts?: string[] }
 
 POST /tts
-  request   { text: string, lang: string, voice: string, model: string }
-  behaviour call the provider's TTS endpoint
-  response  raw audio bytes
-  headers   Cache-Control: public, max-age=86400
+  request   { text: string, lang: string }
+  behaviour proxy to Sarvam TTS (SARVAM_API_KEY held server-side)
+  response  raw audio/wav bytes
+
+POST /stt
+  request   raw audio body (webm/opus from MediaRecorder)
+  behaviour Vosk offline STT (vosk-model-en-in-0.5, Indian English, no key)
+  response  { transcript: string }
 ```
 
-Provider: Sarvam AI.
+Provider: Sarvam AI (chat + TTS only; STT is Vosk offline).
 
 ```
 Chat: POST https://api.sarvam.ai/v1/chat/completions
-      header: api-subscription-key: <KEY>
+      header: api-subscription-key: <KEY>  (attached by Render backend)
       model:  sarvam-105b-conversations
-      Cap max_tokens at ~400. Replies are spoken; long ones cost more and
-      read worse. Disable thinking mode so the first word arrives fast.
+      Cap max_tokens at 280. Disable thinking mode.
 TTS:  POST https://api.sarvam.ai/text-to-speech
       returns base64 audio in an `audios` array.
-Key env var: SARVAM_API_KEY
+STT:  Vosk vosk-model-en-in-0.5 (offline, ~54MB, downloaded at startup).
+Key env var: SARVAM_API_KEY (Render env var, never in frontend)
 ```
 
 ### Phase 3 — Rate limiting and budget protection
-- Per-IP sliding window counter; return 429 when exceeded. On a multi-instance
-  host use Redis/Upstash, not an in-memory Map.
-- Add a hard daily ceiling in the proxy.
+- Per-IP sliding window on the Render backend (in-memory, one instance).
+- Hard daily ceiling optional via `DAILY_CEILING` env var.
 - Document that auto-recharge must be OFF: when prepaid credits hit zero the API
   returns an error and stops. It cannot overspend.
+- **STT is free** (Vosk on Render) — no per-clip billing.
 
 ### Phase 4 — Wire live mode
-In `CONFIG`: set `mode: "api"` and point `apiBase` at the deployed proxy. Nothing
-else in the frontend changes — J5 already has `apiReply()` and `apiSpeak()`.
+In `CONFIG`: set `VITE_API_BASE` to your Render web service URL (e.g.
+`https://chatt-api.onrender.com`) and `VITE_MODE=api`. Nothing else in the
+frontend changes — J5 already has `apiReply()` and `apiSpeak()`. STT now hits
+`/stt` on the same backend (Vosk), not Sarvam.
 
-### Phase 5 — Deploy to Cloudflare and verify
+### Phase 5 — Deploy to Render and verify
 Run the testing checklist in §10 on the deployed URL, on a real phone.
 
 ---
@@ -232,12 +236,14 @@ Run the testing checklist in §10 on the deployed URL, on a real phone.
 
 ## 9 · HOSTING
 
-Cloudflare, free tier:
+Render, free tier:
 
-- Worker serves the proxy AND the static assets.
-- `SARVAM_API_KEY` is a Worker secret (`wrangler secret put`).
-- Keep the static site in the same Worker so there is one deploy and no CORS.
-- Do not enable auto-recharge on the provider dashboard.
+- Python Web Service (`stt-service/`): Vosk STT + Sarvam chat/TTS proxy.
+  `SARVAM_API_KEY` is a Render env var (never in the repo).
+- Static Site (repo root): Vite-built frontend. `VITE_API_BASE` points at
+  the web service URL.
+- `render.yaml` describes both services (blueprint deploy).
+- Do not enable auto-recharge on the Sarvam dashboard.
 
 ---
 
