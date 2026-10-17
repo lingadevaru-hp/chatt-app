@@ -10,7 +10,7 @@ Endpoints:
 Deploy: render.yaml builds this + the static frontend on Render.
 No Cloudflare Worker needed.
 """
-import os, io, json, zipfile, subprocess, tempfile, logging, base64
+import os, io, json, zipfile, tempfile, logging, base64
 from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse, Response
@@ -144,35 +144,35 @@ async def stt(audio: UploadFile = File(...)):
     if not raw:
         raise HTTPException(400, "empty audio")
 
-    # Browser sends webm/opus; Vosk needs 16kHz mono PCM16. Convert via ffmpeg.
-    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
-        f.write(raw)
-        webm_path = f.name
-    wav_path = webm_path + ".wav"
+    # Browser sends webm/opus; libsndfile (via soundfile) decodes it directly.
+    # Vosk needs 16kHz mono PCM16; resample if needed.
     try:
-        proc = subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-i", webm_path,
-             "-ar", "16000", "-ac", "1", "-sample_fmt", "s16", wav_path],
-            capture_output=True,
-        )
-        if proc.returncode != 0:
-            log.error("ffmpeg failed: %s", proc.stderr.decode()[:500])
-            raise HTTPException(500, "audio conversion failed")
-        data, sr = sf.read(wav_path)
-        if sr != 16000:
-            raise HTTPException(500, "bad sample rate")
-        if data.dtype != np.int16:
-            data = (data * 32767).astype(np.int16)
-        rec = vosk.KaldiRecognizer(_vosk_model, 16000)
-        rec.AcceptWaveform(data.tobytes())
-        result = json.loads(rec.FinalResult())
-        return JSONResponse({"transcript": result.get("text", "").strip()})
-    finally:
-        for p in (webm_path, wav_path):
-            try:
-                os.unlink(p)
-            except OSError:
-                pass
+        data, sr = sf.read(io.BytesIO(raw))
+    except Exception as e:
+        log.error("soundfile decode failed: %s", str(e)[:300])
+        raise HTTPException(500, "audio decode failed")
+
+    # Convert to mono
+    if data.ndim > 1:
+        data = data.mean(axis=1)
+
+    # Resample to 16kHz if needed (linear interpolation — fine for speech)
+    if sr != 16000:
+        import math
+        ratio = 16000 / sr
+        new_len = int(len(data) * ratio)
+        indices = np.arange(new_len) / ratio
+        data = np.interp(indices, np.arange(len(data)), data)
+
+    # Convert to int16 PCM
+    if data.dtype != np.int16:
+        data = np.clip(data, -1.0, 1.0)
+        data = (data * 32767).astype(np.int16)
+
+    rec = vosk.KaldiRecognizer(_vosk_model, 16000)
+    rec.AcceptWaveform(data.tobytes())
+    result = json.loads(rec.FinalResult())
+    return JSONResponse({"transcript": result.get("text", "").strip()})
 
 
 # ── Chat endpoint (proxy to Sarvam) ─────────────────────────────────────
