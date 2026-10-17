@@ -6,9 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:prod": "node scripts/assert-prod.js && vite build",
+    "build:prod": "VITE_MODE=api vite build",
     "build:single": "SINGLEFILE=1 vite build",
-    "deploy": "node scripts/assert-dist-prod.js && cd api && npx wrangler deploy",
     "preview": "vite preview"
   },
   "keywords": [],

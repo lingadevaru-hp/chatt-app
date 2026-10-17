@@ -1,6 +1,0 @@
-# Local only. Never commit real values — secrets go via `wrangler secret put`.
-# Copy to .dev.vars for `wrangler dev` (already gitignored).
-SARVAM_API_KEY="sk_test_placeholder_never_commit_a_real_key"
-RATE_LIMIT="20"
-RATE_WINDOW_S="60"
-DAILY_CEILING="300"

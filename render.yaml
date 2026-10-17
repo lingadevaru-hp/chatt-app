@@ -1,0 +1,38 @@
+# Render blueprint — deploys the whole app on Render (no Cloudflare Worker).
+#
+# Services:
+#   chatt-api        Python Web Service — Vosk STT + Sarvam chat/TTS proxy
+#   chatt-frontend   Static Site — the Vite-built frontend
+#
+# After the first deploy:
+#   1. Open the Render dashboard → chatt-api → copy its external URL
+#      (e.g. https://chatt-api.onrender.com)
+#   2. chatt-frontend → Environment → set VITE_API_BASE to that URL
+#   3. Redeploy chatt-frontend
+#
+# Secrets: set SARVAM_API_KEY in the Render dashboard (never in this file).
+
+services:
+  - type: web
+    name: chatt-api
+    env: python
+    plan: free
+    rootDir: stt-service
+    buildCommand: pip install -r requirements.txt && apt-get update && apt-get install -y ffmpeg
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SARVAM_API_KEY
+        sync: false
+
+  - type: static
+    name: chatt-frontend
+    env: static
+    plan: free
+    rootDir: .
+    buildCommand: npm install && VITE_MODE=api npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE
+        value: https://chatt-api.onrender.com
+      - key: VITE_MODE
+        value: api
