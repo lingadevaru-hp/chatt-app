@@ -64,4 +64,107 @@ import { nowISO, uid } from "./utils.js";
     return t.length > 34 ? t.slice(0, 34).trim() + "…" : t;
   };
 
+  /* ================================================================
+      PANEL HAND-OFF  (driven by js/embed.js + the portfolio drawer)
+      ────────────────────────────────────────────────────────────────
+      Browsers PARTITION a cross-site iframe's localStorage by parent
+      site (Chrome 115+, Safari, Firefox). Conversations typed in the
+      portfolio drawer are therefore in a different storage jar than a
+      top-level visit to ai.lingadevaru.in — localStorage cannot bridge
+      them. "Open full site" instead carries the history over in a
+      #thoshan-import= URL hash; these are the two sides of that pipe.
+
+      Caps are tight because the payload travels inside a URL: no files
+      (data-URIs are megabytes), no thoughts (disposable reasoning
+      previews), hard message/text/byte caps on BOTH sides — import
+      re-applies them because the hash is untrusted input.
+      ================================================================ */
+  const HANDOFF_MAX_CHATS = 10;
+  const HANDOFF_MAX_MSGS = 80;
+  const HANDOFF_MAX_TEXT = 8000;        // chars per message
+  const HANDOFF_MAX_BYTES = 60 * 1024;  // whole payload budget
+
+  const updatedKey = (c) => String(c.updated || "");
+
+  /* Panel → full site: newest conversations first, each cleaned down to
+     {role, text, ts}, capped. Returns an array of chat objects. */
+  export function exportChats() {
+    const chats = state.chats
+      .slice()                                    // never mutate live state
+      .sort((a, b) => updatedKey(b).localeCompare(updatedKey(a)))
+      .slice(0, HANDOFF_MAX_CHATS)
+      .map((c) => ({
+        id: c.id, title: c.title, pinned: !!c.pinned,
+        created: c.created, updated: c.updated,
+        messages: c.messages.slice(-HANDOFF_MAX_MSGS).map((m) => ({
+          role: m.role, ts: m.ts || "", text: String(m.text || "").slice(0, HANDOFF_MAX_TEXT),
+        })),    // files + thoughts intentionally dropped — see header note
+      }));
+
+    /* Budget: 10 × 80 × 8k chars could theoretically still blow the URL
+       hash. Shed weight until it fits — messages are halved first, then
+       the oldest conversations are dropped whole. Loop terminates: msgs
+       floor at 8, chats at 0, and an empty array is always tiny. */
+    let cap = HANDOFF_MAX_MSGS;
+    let out = chats;
+    while (JSON.stringify(out).length > HANDOFF_MAX_BYTES && out.length) {
+      if (cap <= 8) { out = out.slice(0, -1); continue; }   // shed the oldest chat
+      cap = Math.floor(cap / 2);
+      out = out.map((c) => ({ ...c, messages: c.messages.slice(-cap) }));
+    }
+    return out;
+  }
+
+  /* Full site ← panel: union-merge by chat id; inside a chat, messages
+     dedupe by ts|role|text so a re-import never duplicates lines. The
+     most recently updated imported chat becomes active, matching "you
+     land where the panel left off". Returns how many chats changed. */
+  export function importChats(payload) {
+    const chats = Array.isArray(payload && payload.chats) ? payload.chats : [];
+    const clip = chats
+      .filter((c) => c && Array.isArray(c.messages) && c.messages.length)
+      .slice(0, HANDOFF_MAX_CHATS)
+      .map((c) => {
+        const created = String(c.created || "").slice(0, 30) || nowISO();
+        const updated = String(c.updated || "").slice(0, 30) || created;
+        const messages = c.messages.slice(-HANDOFF_MAX_MSGS).map((m) => ({
+          role: m && m.role === "user" ? "user" : "assistant",
+          ts: String(m && m.ts || ""),
+          text: String(m && m.text || "").slice(0, HANDOFF_MAX_TEXT),
+        })).filter((m) => m.text);
+        return {
+          id: String(c.id || "").slice(0, 64) || uid(),
+          title: String(c.title || "New Chat").slice(0, 200),
+          pinned: !!c.pinned, created, updated, messages,
+        };
+      })
+      .filter((c) => c.messages.length);
+
+    let changed = 0;
+    for (const inc of clip) {
+      const existing = state.chats.find((c) => c.id === inc.id);
+      if (!existing) { state.chats.push(inc); changed++; continue; }
+      /* union messages, then adopt the newer side's title/updated */
+      const seen = new Set(existing.messages.map((m) => `${m.ts}|${m.role}|${m.text}`));
+      for (const m of inc.messages) {
+        const key = `${m.ts}|${m.role}|${m.text}`;
+        if (seen.has(key)) continue;
+        seen.add(key); existing.messages.push(m); changed++;
+      }
+      if (updatedKey(inc).localeCompare(updatedKey(existing)) > 0) {
+        existing.title = inc.title; existing.pinned = inc.pinned;
+        existing.updated = inc.updated; changed++;
+      }
+    }
+    if (!changed) return 0;
+
+    /* history rows render newest-first everywhere else, so keep the
+       imported chats consistent with that ordering */
+    state.chats.sort((a, b) => updatedKey(b).localeCompare(updatedKey(a)));
+    const newest = clip.reduce((a, c) => (!a || updatedKey(c).localeCompare(updatedKey(a)) > 0 ? c : a), null);
+    if (newest && state.chats.some((c) => c.id === newest.id)) state.activeId = newest.id;
+    saveChats();
+    return changed;
+  }
+
   

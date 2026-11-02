@@ -7,5 +7,9 @@
    NOTE: ES modules do not load over file:// — use `npm run dev`.
    ================================================================ */
 import { boot } from "./settings.js";
+import { installEmbed } from "./embed.js";
 
-boot();
+/* The panel hand-off must land BEFORE boot(): a #thoshan-import merge
+   has to be in state when the first history render happens. For regular
+   visitors installEmbed() is inert — an unseen microtask at worst. */
+installEmbed().finally(boot);
