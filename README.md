@@ -65,7 +65,11 @@ Turnstile: the client (`js/turnstile.js`) renders the widget only when the
 Worker advertises a site key (`/turnstile-config`). Site key sits in
 `api/wrangler.toml`; protection flips ON the moment `TURNSTILE_SECRET` is set
 (`npx wrangler secret put TURNSTILE_SECRET`) — the widget's allowed-domain
-list in the Cloudflare dashboard must include `ai.lingadevaru.in`.
+list in the Cloudflare dashboard must include both custom domains
+(`ai.lingadevaru.in` + `chatt.lingadevaru.in`). Separately, a zone-level WAF
+Managed Challenge may cover both hostnames (with `/health` excluded so
+uptime/deploy checks keep working); if that rule is on, Worker-side
+Turnstile can stay unset — one gate is enough.
 
 ## Language support
 

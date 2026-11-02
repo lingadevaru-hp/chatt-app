@@ -200,8 +200,12 @@ with auto-recharge OFF remain the final backstop.
 - [ ] Owner: paste the new key (`wrangler secret put SARVAM_API_KEY`),
       then re-test a fresh question + one `/tts` + one `/stt` clip.
 - [ ] Owner (optional): enable Turnstile — `wrangler secret put
-      TURNSTILE_SECRET`, confirm the widget's allowed domains include
-      `ai.lingadevaru.in`, then verify a 403→retry flow in the console.
+      TURNSTILE_SECRET`, confirm the widget's allowed domains include BOTH
+      custom domains (`ai.lingadevaru.in`, `chatt.lingadevaru.in`), then
+      verify a 403→retry flow in the console. If the zone WAF Managed
+      Challenge rule (both hostnames) is deployed instead, keep the secret
+      unset — one gate is enough. In either case leave `/health` out of
+      any challenge scope so uptime/deploy checks work.
 - [ ] Tested on a real phone: mic (saaras), keyboard, voice call,
       search, theme, sidebar.
 - [ ] No console errors. No horizontal page overflow at any width.

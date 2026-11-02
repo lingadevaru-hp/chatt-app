@@ -4,7 +4,11 @@
 #   (npm run deploy asserts dist/ is an api bundle before shipping — never
 #    call `wrangler deploy` directly, or a demo bundle can go live)
 # Secrets (never in this file):  npx wrangler secret put SARVAM_API_KEY
-name = "chatt"   # existing worker: chatt.thoshan.workers.dev (+ ai.lingadevaru.in)
+name = "chatt"   # existing worker: chatt.thoshan.workers.dev — custom domains ai.lingadevaru.in + chatt.lingadevaru.in
+# NOTE: a zone WAF Managed Challenge may gate these two hostnames; /health is
+# excluded from it so uptime/deploy checks keep working. If Worker-side
+# Turnstile is ever enabled (TURNSTILE_SECRET), the widget's allowed-domain
+# list must include BOTH custom domains (ai. + chatt.), or drop the WAF rule.
 main = "src/index.ts"
 compatibility_date = "2025-07-18"   # max supported by the pinned wrangler; our code uses nothing date-gated
 
