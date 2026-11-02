@@ -44,6 +44,23 @@ Changelog:
   · Zoho PageSense added in `index.html` (owner-chosen analytics). It is
     SKIPPED when loaded as `?embed=1` — partitioned cookies would make
     every drawer open into a "new" visitor and corrupt the numbers.
+- **2.3.0** — branded Worker gate (DORMANT until `TURNSTILE_SECRET` is
+  set). `api/src/gate.ts` + `ASSETS` binding + `run_worker_first = true`:
+  every request now enters the Worker first; navigations (document
+  loads: sec-fetch-mode=navigate, curl-style headers, or GET with
+  text/html Accept) see a Thoshan-styled verify page instead of a
+  Cloudflare default interstitial; a solved Turnstile widget POSTs
+  `/__turnstile-verify` which issues the SAME 1h signed `chatt_session`
+  cookie the API guard accepts — one solve covers page + API + opens the
+  site. Skips: `/health`, `/turnstile-config`, `/__turnstile-verify`
+  itself, `?embed=1` (the drawer; a cross-site iframe cannot complete an
+  interactive challenge), and anything API-like (no Accept/`*/*` GETs,
+  POSTs). Static serving is unchanged — unmatched paths fall to
+  `ASSETS.fetch(raw)` which keeps the SPA fallback. 13 new gate tests
+  (91 total). IMPORTANT: a zone WAF Interactive Challenge rule still
+  firing on ai./chatt. runs BEFORE the Worker — Cloudflare pipeline puts
+  zone WAF custom rules ahead of Worker routes — so it must be deleted
+  in the dashboard; the Worker gate replaces it as the only gate.
 
 ---
 

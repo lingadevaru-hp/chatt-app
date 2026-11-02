@@ -5,16 +5,29 @@
 #    call `wrangler deploy` directly, or a demo bundle can go live)
 # Secrets (never in this file):  npx wrangler secret put SARVAM_API_KEY
 name = "chatt"   # existing worker: chatt.thoshan.workers.dev — custom domains ai.lingadevaru.in + chatt.lingadevaru.in
-# NOTE: a zone WAF Managed Challenge may gate these two hostnames; /health is
-# excluded from it so uptime/deploy checks keep working. If Worker-side
-# Turnstile is ever enabled (TURNSTILE_SECRET), the widget's allowed-domain
-# list must include BOTH custom domains (ai. + chatt.), or drop the WAF rule.
+# run_worker_first: EVERY request reaches the Worker before any zone
+# feature. This is what makes src/gate.ts the site's one and only gate —
+# the Worker's own branded Turnstile page — and what lets the portfolio
+# drawer (?embed=1) load without any challenge at all (a cross-site
+# iframe cannot complete an interactive challenge; storage is
+# partitioned). Static paths are handed to ASSETS below AFTER the gate
+# middleware, so asset serving still looks identical to the old
+# assets-first setup.
+# NOTE (owner dashboard): while a zone WAF Interactive Challenge rule may
+# still exist for these hostnames, Worker responses ship ahead of it;
+# delete the rule anyway so the zone stays simple and /health checks run
+# the same code path. The widget's allowed domains must include BOTH
+# custom domains (ai. + chatt.) plus chatt.thoshan.workers.dev preview.
 main = "src/index.ts"
 compatibility_date = "2025-07-18"   # max supported by the pinned wrangler; our code uses nothing date-gated
 
 [assets]
 directory = "../dist"
 not_found_handling = "single-page-application"
+# Hand-off binding the Worker falls back to (index.ts app.all("*")).
+binding = "ASSETS"
+# Worker first, exactly once — the gate must see every request.
+run_worker_first = true
 
 # Plain (non-secret) tunables. Secrets go via `wrangler secret put`.
 [vars]

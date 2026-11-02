@@ -24,24 +24,27 @@ import {
   SESSION_COOKIE_NAME,
 } from "./turnstile";
 import { AnswerCache, MemoCache } from "./cache";
-import { allowRequest, underDailyCeiling, clientIp, type LimiterEnv } from "./limits";
-
-type Env = LimiterEnv & {
-  SARVAM_API_KEY?: string;
-  CHAT_MODEL?: string;
-  TTS_MODEL?: string;
-  TTS_VOICE?: string;
-  STT_MODEL?: string;
-  STT_LANG?: string;
-  TURNSTILE_SECRET?: string;
-  TURNSTILE_SITE_KEY?: string;
-};
+import { allowRequest, underDailyCeiling, clientIp } from "./limits";
+import type { Env } from "./env";
+import { gate, verify as gateVerify } from "./gate";
 
 /* 30s of webm/opus is roughly 60-120 KB; 2 MB is generous headroom without
    letting someone POST an arbitrary payload at the paid endpoint. */
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
 
 const app = new Hono<{ Bindings: Env }>();
+
+/* ── GATE first ───────────────────────────────────────────────────────
+   Every request passes through the branded gate BEFORE any route runs.
+   Dormant (secret unset) / skip-listed paths / ?embed=1 / API-like
+   requests all fall through untouched — see gate.ts. Registered before
+   the routes so a gated visit never reaches any endpoint. */
+app.use("*", gate());
+
+/* Docked below its middleware on purpose (gate skip-list passes it
+   through): the widget's success POST lands here, earns the signed
+   session cookie, and the page reloads into a pass-through navigation. */
+app.post("/__turnstile-verify", gateVerify);
 
 // Per-isolate caches (same tradeoff as the limiter fallback — documented
 // in cache.ts). Hit rates are observable via /health for the §D report.
@@ -243,3 +246,18 @@ app.post("/stt", async (c) => {
 });
 
 export default app;
+
+/* ── Static assets + SPA fallback ──────────────────────────────────────
+   Reachable only when nothing above matched (the gate and every API
+   route live above this). run_worker_first = true in wrangler.toml sends
+   ALL requests here first; passing the raw request to ASSETS keeps the
+   binding's asset matching and not_found_handling (single-page-app)
+   behaviour identical to what the zone served before this existed. */
+app.all("*", (c) => {
+  if (!c.env.ASSETS) {
+    /* Deployed config always binds ASSETS; only a misconfigured test env
+       can end up here — say so instead of hanging. */
+    return c.text("asset binding unavailable", 404);
+  }
+  return c.env.ASSETS.fetch(c.req.raw);
+});
