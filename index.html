@@ -2,7 +2,7 @@
 <!--
   ════════════════════════════════════════════════════════════════════════
   THOSHAN · PORTFOLIO ASSISTANT — split frontend (was: single-file basement)
-  Version 2.1.0. See Settings → About for the running version.
+  Version 2.2.0. See Settings → About for the running version.
   ─────────────────────────────────────────────────────────────────
   BUILD MODEL (Phase 1b): ES modules + Vite. index.html is the shell:
   CSS arrives via <link> (C1 first, C11 last — order matters), JS via
@@ -110,6 +110,23 @@
 <link rel="stylesheet" href="styles/overlays.css">
 <link rel="stylesheet" href="styles/motion.css">
 <link rel="stylesheet" href="styles/responsive.css">
+
+<script id="pagesenseCode">
+  /* Zoho PageSense analytics — owner-provided snippet.
+     Runs ONLY for direct visitors: inside the portfolio's side panel
+     (this file loaded as ?embed=1 in a cross-site iframe) it is skipped
+     on purpose — storage partitioning resets its cookies per parent
+     site, so every drawer open would look like a brand-new visitor and
+     corrupt the visitor counts. The portfolio page itself already has
+     its own analytics for that context.
+     Note: the snippet's injected style hides the page until the
+     script answers (10 s watchdog fallback) — that is the vendor's
+     design for their render-blocking surveys, kept verbatim. */
+  (function () {
+    if (new URLSearchParams(location.search).get("embed") === "1") return;
+    !function(){var e="1.0",t=document,a=window,n="zps-page-screen",r=t.head||t.getElementsByTagName("head")[0],i=t.getElementById("pagesenseCode");if(!t.getElementById(n)){var o=t.createElement("style");o.type="text/css",o.id=n;var s="body { background: transparent !important; opacity: 0 !important; visibility: hidden !important; } html { opacity: 0 !important; visibility: hidden !important; }";o.styleSheet?o.styleSheet.cssText=s:o.appendChild(t.createTextNode(s)),r.firstChild?r.insertBefore(o,r.firstChild):r.appendChild(o),a._ps_conf={};var c={addScript:function(e){try{var n=t.createElement("script");if(n.type="text/javascript",n.async=!0,e.src?n.src=e.src:e.text&&(void 0!==n.text?n.text=e.text:n.appendChild(t.createTextNode(e.text))),i&&i.getAttribute){var o=i.getAttribute("nonce");o&&n.setAttribute("nonce",o)}n.onload=n.onreadystatechange=function(){this.readyState&&"loaded"!==this.readyState&&"complete"!==this.readyState||(n.onload=n.onreadystatechange=null,a._ps_conf&&a._ps_conf.pauseRenderForManualActivation?clearTimeout(d):c.revealPage())},n.onerror=function(){c.revealPage()},r.appendChild(n)}catch(e){throw c.revealPage(),e}},revealPage:function(){var e=t.getElementById(n);e&&e.parentNode&&e.parentNode.removeChild(e)}},d=setTimeout((function(){c.revealPage()}),1e4),p=c.revealPage;c.revealPage=function(){clearTimeout(d),p()};try{a._ps_conf&&a._ps_conf.pauseRenderForManualActivation&&(a.pagesense=a.pagesense||[],a.pagesense.push=function(e){e&&"activate"==e[0]&&c&&c.revealPage()}),a._ps_conf=a._ps_conf||{},a._ps_conf.version=e,c.addScript({src:"https://cdn-in.pagesense.io/js/1qgra7w3/c7a2dee38bbf475c907c4727cf8fd89f.js"})}catch(e){c.revealPage()}}}();
+  })();
+</script>
 </head>
 <body>
 
@@ -422,7 +439,7 @@
       </button>
       <div class="about__row">
         <span class="about__k">Version</span>
-        <span class="about__v">2.1.0 · back on the Cloudflare Worker</span>
+        <span class="about__v">2.2.0 · embed-ready</span>
       </div>
     </div>
   </div>

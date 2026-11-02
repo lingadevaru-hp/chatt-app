@@ -26,6 +26,24 @@ Changelog:
   ffmpeg-in-container fragility, while the Worker had been proven live
   since 1.9.0. Turnstile client/restored (`js/turnstile.js`); protection
   stays OFF until `TURNSTILE_SECRET` is set (§5).
+- **2.2.0** — embed-ready. The portfolio drawer (lingadevaru.in) now
+  embeds this WHOLE app over `ai.lingadevaru.in?embed=1`:
+  · `js/embed.js` (J13) is the chat side of the contract — `?embed=1`
+    detection, parent theme pushes (applied but never saved), replies to
+    `{type:"thoshan-history-request"}` with capped exported chats,
+    imports a `#thoshan-import=` hash before first render and strips it.
+  · `store.exportChats()/importChats()` move conversations between the
+    drawer's partitioned localStorage jar and the top-level one (browser
+    storage inside a cross-site iframe is partitioned — shared jars are
+    impossible). Caps: 10 chats / 80 msgs / 8k chars / 60KB; files and
+    thoughts dropped; re-import is a no-op by design.
+  · Workflow: chat in the drawer → click open-full-site → the full app
+    boots with the same conversation active. One-way (drawer → full
+    site); reverse sync would double-count on the next open, job for
+    later if ever wanted.
+  · Zoho PageSense added in `index.html` (owner-chosen analytics). It is
+    SKIPPED when loaded as `?embed=1` — partitioned cookies would make
+    every drawer open into a "new" visitor and corrupt the numbers.
 
 ---
 
