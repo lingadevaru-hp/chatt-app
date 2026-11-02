@@ -77,7 +77,7 @@ async function guard(c: Context<{ Bindings: Env }>, route: string) {
   /* Turnstile bot protection. If TURNSTILE_SECRET is set, require a valid
      session cookie or a fresh Turnstile token — otherwise bots burn Sarvam
      credits. Unset secret = protection off (backward compatible). A valid
-     token earns an HttpOnly session cookie (1h) so later calls skip the
+     token earns an HttpOnly session cookie (1 minute) so later calls skip the
      challenge. */
   if (c.env.TURNSTILE_SECRET) {
     const ip = clientIp(c.req.raw);
@@ -93,7 +93,7 @@ async function guard(c: Context<{ Bindings: Env }>, route: string) {
       const session = await makeSession(ip, c.env.TURNSTILE_SECRET);
       c.header(
         "Set-Cookie",
-        `${SESSION_COOKIE_NAME}=${session}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600`,
+        `${SESSION_COOKIE_NAME}=${session}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=60`,
       );
     }
   }

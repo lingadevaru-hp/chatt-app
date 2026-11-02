@@ -120,7 +120,7 @@ export async function verify(c: Context<{ Bindings: Env }>) {
        satisfies the API. HttpOnly so page JS cannot read it;
        SameSite=Lax so a plain top-level reload still carries it. */
     "Set-Cookie":
-      `${SESSION_COOKIE_NAME}=${session}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600`,
+      `${SESSION_COOKIE_NAME}=${session}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=60`,
   });
 }
 

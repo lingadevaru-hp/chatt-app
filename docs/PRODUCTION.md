@@ -50,7 +50,7 @@ Changelog:
   loads: sec-fetch-mode=navigate, curl-style headers, or GET with
   text/html Accept) see a Thoshan-styled verify page instead of a
   Cloudflare default interstitial; a solved Turnstile widget POSTs
-  `/__turnstile-verify` which issues the SAME 1h signed `chatt_session`
+  `/__turnstile-verify` which issues the SAME 1-minute signed `chatt_session`
   cookie the API guard accepts — one solve covers page + API + opens the
   site. Skips: `/health`, `/turnstile-config`, `/__turnstile-verify`
   itself, `?embed=1` (the drawer; a cross-site iframe cannot complete an
@@ -75,6 +75,11 @@ Changelog:
   kept byte-exact from the official docs (SHA-check + `node --check`
   after edit — the PageSense mangling lesson). The portfolio site keeps
   its OWN PostHog org; nothing wiki-side was touched.
+- **2.3.2** — human-verification session shortened from 1 hour to 1
+  minute (`SESSION_TTL_MS = 60_000`, `Max-Age=60` on both the API guard
+  and the branded gate cookie). After solving Turnstile, the visitor is
+  re-asked after 60s. NOTE: the gate is still dormant until
+  `TURNSTILE_SECRET` is set — without it no verification is asked at all.
 
 ---
 

@@ -6,7 +6,7 @@
 
 const TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const SESSION_COOKIE_NAME = "chatt_session";
-const SESSION_TTL_MS = 3600 * 1000; // 1 hour
+const SESSION_TTL_MS = 60 * 1000; // 1 minute — owner-set: re-verify after 60s
 
 /**
  * Validate a Turnstile token via Cloudflare's siteverify API.
