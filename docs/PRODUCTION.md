@@ -61,6 +61,20 @@ Changelog:
   firing on ai./chatt. runs BEFORE the Worker — Cloudflare pipeline puts
   zone WAF custom rules ahead of Worker routes — so it must be deleted
   in the dashboard; the Worker gate replaces it as the only gate.
+- **2.3.1** — PostHog analytics (owner's new org, EU cloud) in
+  `index.html` via the official HTML snippet (no npm SDK — ~35 kB
+  bundle avoided). Chosen EU host on purpose: the token validates at
+  `eu.i.posthog.com` and is rejected at `us.i` (probed `/decide/`
+  before install — `/batch/` accepts ANY key and proves nothing).
+  `defaults: '2026-08-30'` gives autocapture + session replay + pageview
+  + referrer/UTM + session-duration properties out of the box; a
+  `loaded()` callback stamps every event with `app=thoshan-chat` and the
+  running version. One snippet covers all three serving hostnames (the
+  same worker serves them all from one HTML file). SKIPPED when loaded
+  as `?embed=1`, same partitioning reasoning as PageSense. Vendor line
+  kept byte-exact from the official docs (SHA-check + `node --check`
+  after edit — the PageSense mangling lesson). The portfolio site keeps
+  its OWN PostHog org; nothing wiki-side was touched.
 
 ---
 

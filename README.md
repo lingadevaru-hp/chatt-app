@@ -2,7 +2,7 @@
 
 A voice-enabled chatbot for Thoshan's personal portfolio site. Visitors can type or talk, replies can be read aloud, and there is a full-screen voice-call mode. Vanilla HTML/CSS/JS — no frameworks.
 
-**Version:** 2.3.0
+**Version:** 2.3.1
 **Last Updated:** 02-11-2026
 **Status:** ✅ Live on Cloudflare Workers — `https://ai.lingadevaru.in`
 
