@@ -1,444 +1,141 @@
 # Thoshan · Portfolio Assistant — Web App
 
-A voice-enabled chatbot for Thoshan's personal portfolio site. Visitors can type or talk, and replies can be read aloud. Built with vanilla HTML, CSS, and JavaScript (no frameworks).
+A voice-enabled chatbot for Thoshan's personal portfolio site. Visitors can type or talk, replies can be read aloud, and there is a full-screen voice-call mode. Vanilla HTML/CSS/JS — no frameworks.
 
-**Version:** 1.3.0
-**Last Updated:** October 17, 2026
-**Status:** ✅ Speech-to-text fixed and ready for deployment
+**Version:** 2.1.0
+**Last Updated:** 02-11-2026
+**Status:** ✅ Live on Cloudflare Workers — `https://ai.lingadevaru.in`
 
----
+## Architecture
 
-## 🚀 Quick Start
+Everything runs in **one Cloudflare Worker** (`chatt`), which serves both the
+static frontend and the API at the same origin — no CORS, one deploy:
 
-### Local Development
+```
+browser ─ same origin ─→ Worker chatt (api/src)  — ai.lingadevaru.in
+                            ├── /chat  → Sarvam chat (sarvam-105b-conversations)
+                            ├── /tts   → Sarvam TTS (bulbul:v4-flash, per-language)
+                            ├── /stt   → Sarvam STT (saaras:v4, language auto-detect)
+                            ├── /health, /turnstile-config
+                            └── static assets (dist/, SPA fallback)
+
+SARVAM_API_KEY lives only as a Worker secret — the browser never sees it.
+```
+
+The frontend is baked with `VITE_MODE=api`; source default stays `"demo"`
+(no key, no network, no cost). Model/voice selection is server-side
+(`api/wrangler.toml` vars), so a visitor can never ask for an expensive model.
+
+## Quick start
 
 ```bash
-# Install dependencies
-npm install
+npm install            # dev deps (Vite)
+npm run dev            # demo mode at http://localhost:5173
 
-# Start development server (demo mode - no backend needed)
-npm run dev
+# Worker proxy (api/)
+cd api && npm ci
+npm test               # 78 unit + route tests (network stubbed)
+npm run typecheck
 
-# Open in browser
-# http://localhost:5173
+# Prod build + deploy (root)
+VITE_MODE=api npm run build:prod   # refuses to build if the flag is missing
+npm run deploy                     # asserts dist/ is an api bundle, then wrangler deploy
 ```
 
-The app runs in **demo mode** by default - all features work with no backend, using a local knowledge base.
-
----
-
-## 🌐 Deployment
-
-The web app consists of **two services** that must be deployed together:
-
-1. **Backend (Python)**: STT (Vosk) + Chat/TTS proxy (Sarvam)
-2. **Frontend (Static)**: Built with Vite, served as static files
-
-### Recommended Hosting: Render (Free Tier)
-
-Both services can be deployed on **Render** for free. See [render.yaml](render.yaml) for the complete configuration.
-
----
-
-## 📦 Service 1: Backend (Python)
-
-### What it does
-- **Speech-to-Text (STT)**: Offline Vosk model (vosk-model-en-in-0.5) for Indian English
-- **Chat**: Proxy to Sarvam AI API (requires `SARVAM_API_KEY`)
-- **Text-to-Speech (TTS)**: Proxy to Sarvam AI TTS API
-- **Health check**: `/health` endpoint
-
-### Files
-- `stt_service/main.py` - FastAPI application
-- `stt_service/requirements.txt` - Python dependencies
-- `render.yaml` - Render blueprint configuration
-
-### Endpoints
-
-| Method | Endpoint | Description | Authentication |
-|--------|----------|-------------|----------------|
-| POST | `/stt` | Speech-to-text (Vosk offline) | None |
-| POST | `/chat` | Chat with Sarvam AI | `SARVAM_API_KEY` |
-| POST | `/tts` | Text-to-speech (Sarvam) | `SARVAM_API_KEY` |
-| GET | `/health` | Health check | None |
-
-### Deployment Steps (Render)
-
-1. **Create a new Web Service** in Render dashboard
-2. **Connect GitHub repository**: `lingadevaru-hp/chatt-app`
-3. **Configure Service:**
-   - **Name:** `chatt-api` (or any name you prefer)
-   - **Type:** Web Service
-   - **Environment:** Python
-   - **Region:** Choose closest to your users
-   - **Plan:** Free
-   - **Root Directory:** `stt_service`
-   - **Build Command:** `pip install -r requirements.txt && apt-get update && apt-get install -y ffmpeg`
-   - **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
-
-4. **Add Environment Variable:**
-   - **Key:** `SARVAM_API_KEY`
-   - **Value:** Your Sarvam AI API key (mark as **Secret**)
-   - **Note:** This key is used for chat and TTS only. STT uses Vosk (offline, no API key).
-
-5. **Deploy**
-   - Click "Create Web Service"
-   - Wait for build to complete (~5-10 minutes for first deploy, includes Vosk model download)
-   - Note the service URL (e.g., `https://chatt-api.onrender.com`)
-
-### Testing the Backend
+## Swap or set the API key
 
 ```bash
-# Test health endpoint
-curl https://your-service-url.onrender.com/health
-
-# Expected response:
-# {"ok": true, "stt": "vosk-en-in", "key_set": true}
+cd api && npx wrangler secret put SARVAM_API_KEY   # paste the key, Enter
 ```
 
----
+No code change, no rebuild — the Worker picks it up on the next request.
+Auto-recharge must stay **OFF** in the Sarvam dashboard: at zero balance the
+API errors out and stops; it cannot overspend.
 
-## 🎨 Service 2: Frontend (Static Site)
+## Endpoints & protections (api/src)
 
-### What it does
-- Voice-enabled chatbot UI
-- Chat with Thoshan's portfolio knowledge base
-- Speech-to-text via backend STT endpoint
-- Text-to-speech via backend TTS endpoint
-- Full-screen voice call mode
-- Chat history, search, settings
-- Mobile-first responsive design
+| Route | Request → Response | Guards |
+|-------|--------------------|--------|
+| `POST /chat` | `{message, history[]}` → `{reply, thoughts[]}` | Zod 400 → daily ceiling 429 → per-IP sliding window 429 (+`Retry-After`) → provider (errors 502, provider 429 passes) |
+| `POST /tts` | `{text, lang}` → `audio/wav` | same guard chain; per-isolate memo + `Cache-Control: public, max-age=86400` |
+| `POST /stt` | raw audio body (`audio/webm;…`) → `{transcript, languageCode}` | same guard chain; ≤2 MB, 30 s provider cap → 422 passes through |
+| `GET /health` | `{ok, mode, cache stats}` | none (keyless) |
 
-### Files
-- `index.html` - Main application (single-file for now)
-- `js/` - JavaScript modules
-- `styles/` - CSS files
-- `vite.config.mjs` - Vite configuration
+Turnstile: the client (`js/turnstile.js`) renders the widget only when the
+Worker advertises a site key (`/turnstile-config`). Site key sits in
+`api/wrangler.toml`; protection flips ON the moment `TURNSTILE_SECRET` is set
+(`npx wrangler secret put TURNSTILE_SECRET`) — the widget's allowed-domain
+list in the Cloudflare dashboard must include `ai.lingadevaru.in`.
 
-### Deployment Steps (Render)
+## Language support
 
-1. **Create a new Static Site** in Render dashboard
-2. **Connect GitHub repository**: `lingadevaru-hp/chatt-app`
-3. **Configure Service:**
-   - **Name:** `chatt-frontend` (or any name you prefer)
-   - **Type:** Static Site
-   - **Environment:** Static
-   - **Region:** Same as backend
-   - **Plan:** Free
-   - **Root Directory:** `.` (root of repository)
-   - **Build Command:** `npm install && VITE_MODE=api VITE_API_BASE=https://your-backend-url.onrender.com npm run build`
-   - **Publish Directory:** `dist`
+- **Chat**: 23 Indian languages; the prompt lives in `shared/knowledge.js`
+  (single source of truth — the Worker imports it directly).
+- **STT**: `saaras:v4` auto-detects (English, Kannada, Hindi, …); Sarvam's
+  REST endpoint caps a request at 30 s of audio (`CONFIG.maxRecordSeconds=30`,
+  keep both in step).
+- **TTS**: `bulbul:v4-flash` persona per language (`shubh_enhi_companion`,
+  `chetan_kn_conversation`, …); Malayalam/Odia fall back to `bulbul:v3`.
 
-4. **Add Environment Variables:**
-   - **Key:** `VITE_API_BASE`
-     **Value:** Your backend service URL (e.g., `https://chatt-api.onrender.com`)
-   
-   - **Key:** `VITE_MODE`
-     **Value:** `api`
+## Costs
 
-5. **Deploy**
-   - Click "Create Static Site"
-   - Wait for build to complete (~2-5 minutes)
-   - Your app will be live at the provided URL
+- Hosting: ₹0 — Cloudflare Workers free tier.
+- Sarvam: prepaid credits only (chat ₹29.28 in/1M in, ~₹73/1M out; TTS
+  v4-flash ₹20/10K chars; STT per second of audio). At ~6 visitors ×
+  ~5 min/month the bill is roughly **₹0–30**; idle months are ₹0.
+- Cost levers: exact-match answer cache (seeded greetings), TTS memo +
+  CDN caching, 500-char message cap, history window 6, output cap 280,
+  pre-rendered audio for top questions (`scripts/prerender.sh` → `audio/`),
+  browser TTS fallback.
 
-### Important Notes
+## Testing checklist (360px / 390px / 1280px)
 
-- **API Base URL**: Must match your backend service URL exactly
-- **Mode**: Must be `api` (not `demo`) to use the backend
-- **Demo Mode**: If `VITE_MODE` is not `api` or `VITE_API_BASE` is empty, the app runs in demo mode with no network calls
+- [x] Demo mode works with no key and no network
+- [x] Streaming reply, Stop halts mid-word and saves the partial
+- [x] Send works on touch; keyboard stays open through the reply
+- [x] Mic visible at start, hidden after one capture, back next turn
+- [x] 30-second cap with a clear notice
+- [x] Attach menu aligned with composer; thumbnails inside it
+- [x] Tables scroll horizontally; code blocks copy; links tappable
+- [x] Voice call loop, search page, theme, sidebar rail, history
+- [x] No console errors; no horizontal overflow
 
----
+## Troubleshooting
 
-## 📋 Using render.yaml (Blueprint Deploy)
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `/chat` → 502 `invalid_api_key_error` | key revoked/missing | `cd api && npx wrangler secret put SARVAM_API_KEY` |
+| 429 `daily budget exhausted` | `DAILY_CEILING` hit (default 300/day) | wait for reset or raise `DAILY_CEILING` in `api/wrangler.toml` |
+| `chrome.cloudflarechallenge…` never shows | Turnstile secret unset | expected — protection off; see §Turnstile |
+| Stale answers / wrong mode live | demo bundle shipped | deploy guard prevents it; verify `dist/.build-mode` says `api` |
+| `chatt.lingadevaru203.workers.dev` dead | old pasted URL | use `chatt.thoshan.workers.dev` or the custom domain `ai.lingadevaru.in` |
 
-For easier deployment, use the provided `render.yaml` blueprint:
-
-### Steps
-
-1. **Push your code to GitHub** (already done)
-2. **In Render dashboard:**
-   - Click "New" → "Blueprint"
-   - Select "From GitHub Repository"
-   - Choose `lingadevaru-hp/chatt-app`
-   - Select the `render.yaml` file
-3. **Configure:**
-   - Add `SARVAM_API_KEY` environment variable to the backend service
-   - Update `VITE_API_BASE` to match your backend URL (or leave as `https://chatt-api.onrender.com` if using default)
-4. **Deploy**
-
-The blueprint will create both services automatically.
-
----
-
-## 🔧 Configuration
-
-### Environment Variables
-
-#### Backend (stt_service)
-
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `SARVAM_API_KEY` | ✅ Yes | Sarvam AI API key for chat/TTS | `sk-...` |
-| `LOG_LEVEL` | ❌ No | Logging level | `INFO` (default) |
-
-#### Frontend
-
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `VITE_API_BASE` | ✅ Yes | Backend service URL | `https://chatt-api.onrender.com` |
-| `VITE_MODE` | ✅ Yes | Mode: `api` or `demo` | `api` |
-
-### Configuration File
-
-The frontend configuration is in `js/config.js`. Key settings:
-
-```javascript
-{
-  mode: "api",              // or "demo"
-  apiBase: "https://chatt-api.onrender.com",
-  maxRecordSeconds: 30,
-  historyWindow: 6,
-  oneVoicePerTurn: true,
-  autoSendVoice: false,
-  attachMenu: true
-}
-```
-
----
-
-## 🎯 Features
-
-### ✅ Working Features
-
-- **Chat**: Conversational interface with streaming replies
-- **Voice Input**: Record speech, transcribe via backend STT
-- **Voice Output**: Text-to-speech via backend TTS
-- **Voice Call Mode**: Hands-free listen → think → speak loop
-- **Search**: Search chat history by title and content
-- **Settings**: Theme (dark/light/system), language, voice toggles
-- **Attachments**: Photos, camera, files (preview in composer)
-- **History**: Chat history with pin/rename/delete/share-as-PDF
-- **Markdown**: Tables, code blocks with copy, links, lists, math
-- **Mobile-First**: Responsive design, optimized for mobile
-
-### 🌍 Language Support
-
-- **Chat**: Multi-language (English, Kannada, Hindi, Tamil, Telugu, Malayalam, etc.)
-- **STT**: Indian English (vosk-model-en-in-0.5)
-- **TTS**: Multiple voices via Sarvam AI
-
----
-
-## 💰 Cost & Budget
-
-### Expected Costs (Per Month)
-
-| Service | Cost | Notes |
-|---------|------|-------|
-| Render Backend | ~$0 | Free tier sufficient for low traffic |
-| Render Frontend | ~$0 | Free tier (static site) |
-| Sarvam Chat API | ~₹0-80 | Pay-per-use, depends on usage |
-| Sarvam TTS API | ~₹0-40 | Pay-per-use, depends on usage |
-| **Total** | **₹0-120** | For 5-30 minutes of conversation/month |
-
-### Cost Optimization
-
-- ✅ STT is **free** (Vosk offline, no API calls)
-- ✅ System prompt is short (portfolio facts only)
-- ✅ Context capped at 12 messages
-- ✅ Output capped at ~400 tokens
-- ✅ TTS responses can be cached (not yet implemented)
-
-### Budget Protection
-
-- ⚠️ **Disable auto-recharge** in Sarvam dashboard
-- When credits hit zero, API returns error and stops
-- No risk of unexpected charges
-
----
-
-## 🧪 Testing Checklist
-
-Run these tests at **360px, 390px, and 1280px** widths:
-
-### ✅ Demo Mode (No Backend)
-- [ ] App loads and works without network
-- [ ] Chat with local knowledge base works
-- [ ] All UI features functional
-- [ ] No console errors
-
-### ✅ API Mode (With Backend)
-- [ ] Chat sends to backend, receives replies
-- [ ] STT records audio, transcribes via backend
-- [ ] TTS synthesizes speech via backend
-- [ ] Voice call mode works end-to-end
-- [ ] All settings persist
-- [ ] No console errors
-- [ ] No horizontal page overflow
-
-### 📱 Mobile-Specific Tests
-- [ ] Keyboard stays open after send
-- [ ] Mic visible at start, hidden after capture
-- [ ] 30-second recording cap works
-- [ ] Attach menu aligned with composer
-- [ ] Attachment thumbnails appear correctly
-- [ ] Tables scroll horizontally on narrow screens
-- [ ] Code blocks have working copy button
-- [ ] Links are tappable
-
----
-
-## 🐛 Troubleshooting
-
-### STT Not Working
-
-**Symptoms:** Mic button doesn't respond, no transcription
-
-**Check:**
-1. ✅ Backend service is running
-2. ✅ `VITE_MODE=api` is set
-3. ✅ `VITE_API_BASE` points to correct backend URL
-4. ✅ Backend `/health` endpoint returns `{"ok": true}`
-5. ✅ Browser console shows no errors
-6. ✅ Microphone permission granted
-
-**Fix:**
-- Check browser console for errors
-- Test backend STT endpoint directly:
-  ```bash
-  # Record audio and test
-  curl -X POST -F "audio=@test.webm" https://your-backend-url.onrender.com/stt
-  ```
-
-### TTS Not Working
-
-**Symptoms:** Speaker button doesn't play audio
-
-**Check:**
-1. ✅ `SARVAM_API_KEY` is set in backend
-2. ✅ Backend `/chat` and `/tts` endpoints work
-3. ✅ No 401/403 errors in browser console
-
-**Fix:**
-- Verify `SARVAM_API_KEY` is correct
-- Test backend TTS endpoint:
-  ```bash
-  curl -X POST -H "Content-Type: application/json" \
-    -d '{"text":"Hello","lang":"en-IN"}' \
-    https://your-backend-url.onrender.com/tts
-  ```
-
-### App Stuck in Demo Mode
-
-**Symptoms:** All features work but no backend calls
-
-**Check:**
-1. ✅ `VITE_MODE=api` (not `demo`)
-2. ✅ `VITE_API_BASE` is set and not empty
-3. ✅ Frontend was rebuilt after setting environment variables
-
-**Fix:**
-- Rebuild frontend: `VITE_MODE=api VITE_API_BASE=https://your-backend-url npm run build`
-- Clear browser cache
-
----
-
-## 📚 Project Structure
+## Project structure
 
 ```
 chatt-app/
-├── index.html                 # Main HTML (single-file for now)
-├── js/                        # JavaScript modules
-│   ├── config.js              # Configuration
-│   ├── brain.js              # Demo brain + API calls
-│   ├── chat.js               # Chat logic
-│   ├── speech.js             # STT/TTS logic
-│   ├── call.js               # Voice call mode
-│   ├── store.js              # State management
-│   ├── utils.js              # Utilities
-│   ├── settings.js           # Settings
-│   ├── attachments.js        # Attachment handling
-│   └── turnstile.js          # Turnstile (now plain fetch)
-├── styles/                    # CSS files
-│   └── ...                    # Style modules
-├── stt_service/               # Backend service
-│   ├── main.py               # FastAPI application
-│   ├── requirements.txt      # Python dependencies
-│   └── .env.example          # Environment template
-├── render.yaml               # Render blueprint
-├── vite.config.mjs           # Vite configuration
-└── package.json              # Node.js dependencies
+├── api/                      # Cloudflare Worker proxy (Hono + TS + Zod)
+│   ├── src/                  # routes, sarvam.ts providers, limits, cache, turnstile
+│   ├── test/                 # 78 tests (vitest, network stubbed)
+│   └── wrangler.toml         # worker name `chatt`, assets dir, tunables, site key
+├── js/                       # frontend modules (config, brain, speech, …)
+├── styles/                   # CSS modules
+├── shared/knowledge.js       # SYSTEM_PROMPT + facts — single source of truth
+├── scripts/                  # prod asserts, prerender pipeline
+├── docs/PRODUCTION.md        # authoritative production notes
+└── dist/                     # Vite build (gitignored)
 ```
 
----
+## Privacy
 
-## 📖 Documentation
-
-- **Main README:** This file
-- **Android App:** [androidapp/README.md](../Chatting%20Android%20application./README.md)
-- **Backend Docs:** See `stt_service/main.py` header comments
-- **Frontend Docs:** See comments in `index.html` and `js/*.js` files
-
----
-
-## 🔒 Privacy & Security
-
-### Data Handling
-- ✅ **No API keys in frontend** - All keys stored server-side
-- ✅ **Chat history local** - Stored in browser localStorage
-- ✅ **STT offline** - Vosk model runs on Render, no external API
-- ✅ **Minimal data collection** - No analytics, no tracking
-
-### User Data
-- Chat messages: Stored locally in browser
-- No server-side history
-- No user accounts
-- No personal data collected
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly (see Testing Checklist)
-5. Submit a pull request
-
----
-
-## 📄 License
-
-This project is proprietary. All rights reserved.
-
----
-
-## 🆘 Support
-
-- **Issues:** Create a GitHub issue in the respective repository
-- **Questions:** contact@lingadevaru.in
-- **Bug Reports:** Include browser, OS, steps to reproduce
-
----
-
-## 📊 Analytics
-
-No analytics or tracking is implemented. The app is completely private and offline-capable.
-
----
-
-## 🎨 Design System
-
-- **Background:** `#0a0a0b` (dark theme default)
-- **Accent Color:** `#e8703a` (orange)
-- **Typography:** System fonts
-- **Theme:** Dark by default, with light/system options
-
----
+- `SARVAM_API_KEY` only ever lives as a Worker secret.
+- STT audio goes browser → Worker → Sarvam only; it is not stored (≤2 MB,
+  30 s cap) and not logged. Browser/buffer STT stays the free path.
+- Chat history stays in the visitor's localStorage — per-device by design.
+- No analytics, no accounts, no server-side history.
 
 ## Repository
 
-- **Source:** `github.com/lingadevaru-hp/chatt-app`
-- **Backend:** Python FastAPI + Vosk STT
-- **Frontend:** Vanilla HTML/CSS/JS + Vite
-- **Deployment:** Render (free tier)
+- **Source:** `github.com/lingadevaru-hp/chatt-app` (private) — commits/PRs mirrored where applicable
+- **Live:** `https://ai.lingadevaru.in` · Worker name: `chatt`
+- **Docs:** `docs/PRODUCTION.md` · `DEPLOYMENT.md` (workspace root)
