@@ -2,7 +2,7 @@
 <!--
   ════════════════════════════════════════════════════════════════════════
   THOSHAN · PORTFOLIO ASSISTANT — split frontend (was: single-file basement)
-  Version 1.15.1. See Settings → About for the running version.
+  Version 2.3.2. See Settings → About for the running version.
   ─────────────────────────────────────────────────────────────────
   BUILD MODEL (Phase 1b): ES modules + Vite. index.html is the shell:
   CSS arrives via <link> (C1 first, C11 last — order matters), JS via
@@ -110,6 +110,54 @@
 <link rel="stylesheet" href="styles/overlays.css">
 <link rel="stylesheet" href="styles/motion.css">
 <link rel="stylesheet" href="styles/responsive.css">
+
+<script id="pagesenseCode">
+  /* Zoho PageSense analytics — owner-provided snippet.
+     Runs ONLY for direct visitors: inside the portfolio's side panel
+     (this file loaded as ?embed=1 in a cross-site iframe) it is skipped
+     on purpose — storage partitioning resets its cookies per parent
+     site, so every drawer open would look like a brand-new visitor and
+     corrupt the visitor counts. The portfolio page itself already has
+     its own analytics for that context.
+     Note: the snippet's injected style hides the page until the
+     script answers (10 s watchdog fallback) — that is the vendor's
+     design for their render-blocking surveys, kept verbatim. */
+  (function () {
+    if (new URLSearchParams(location.search).get("embed") === "1") return;
+    !function(){var e="1.0",t=document,a=window,n="zps-page-screen",r=t.head||t.getElementsByTagName("head")[0],i=t.getElementById("pagesenseCode");if(!t.getElementById(n)){var o=t.createElement("style");o.type="text/css",o.id=n;var s="body { background: transparent !important; opacity: 0 !important; visibility: hidden !important; } html { opacity: 0 !important; visibility: hidden !important; }";o.styleSheet?o.styleSheet.cssText=s:o.appendChild(t.createTextNode(s)),r.firstChild?r.insertBefore(o,r.firstChild):r.appendChild(o),a._ps_conf={};var c={addScript:function(e){try{var n=t.createElement("script");if(n.type="text/javascript",n.async=!0,e.src?n.src=e.src:e.text&&(void 0!==n.text?n.text=e.text:n.appendChild(t.createTextNode(e.text))),i&&i.getAttribute){var o=i.getAttribute("nonce");o&&n.setAttribute("nonce",o)}n.onload=n.onreadystatechange=function(){this.readyState&&"loaded"!==this.readyState&&"complete"!==this.readyState||(n.onload=n.onreadystatechange=null,a._ps_conf&&a._ps_conf.pauseRenderForManualActivation?clearTimeout(d):c.revealPage())},n.onerror=function(){c.revealPage()},r.appendChild(n)}catch(e){throw c.revealPage(),e}},revealPage:function(){var e=t.getElementById(n);e&&e.parentNode&&e.parentNode.removeChild(e)}},d=setTimeout((function(){c.revealPage()}),1e4),p=c.revealPage;c.revealPage=function(){clearTimeout(d),p()};try{a._ps_conf&&a._ps_conf.pauseRenderForManualActivation&&(a.pagesense=a.pagesense||[],a.pagesense.push=function(e){e&&"activate"==e[0]&&c&&c.revealPage()}),a._ps_conf=a._ps_conf||{},a._ps_conf.version=e,c.addScript({src:"https://cdn-in.pagesense.io/js/1qgra7w3/c7a2dee38bbf475c907c4727cf8fd89f.js"})}catch(e){c.revealPage()}}}();
+  })();
+</script>
+<script id="posthogCode">
+  /* PostHog product analytics — owner's second analytics org, for the
+     chat subdomains. All three hostnames (ai. + chatt. custom domains and
+     the chatt.thoshan.workers.dev preview) are served by the same worker
+     and the same HTML, so this one snippet covers the whole chat site.
+     · EU cloud ON PURPOSE: the token validates at eu.i.posthog.com and is
+       rejected at us.i (checked via the /decide/ endpoint before install).
+       api_host eu.i also auto-derives the eu-assets loader host inside
+       the snippet itself.
+     · defaults '2026-08-30' = PostHog's current bundled option set:
+       autocapture, session replay, pageviews, referrer/UTM properties and
+       session duration — the full capture the owner asked for.
+     · loaded() stamps every event with app + running version, so PostHog
+       dashboards can be split by release the same way the About line is.
+     · Skipped inside the portfolio drawer (?embed=1) for the same reason
+       as PageSense: cross-site iframe storage partitioning would turn
+       every drawer open into a fresh visitor and corrupt the numbers.
+       The parent portfolio page has its own analytics for that context.
+  */
+  (function () {
+    if (new URLSearchParams(location.search).get("embed") === "1") return;
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog && window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}p||((p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",p.onerror=function(){p=null},(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r));var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],Object.defineProperty(u,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e}}),Object.defineProperty(u.people,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(){return u.toString(1)+".people (stub)"}}),o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagResult isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+    posthog.init('phc_ojTigEE3X3jNoU372tLcsWaGasvWaHA2gokPbzdC8BC4', {
+      api_host: 'https://eu.i.posthog.com',
+      defaults: '2026-08-30',
+      loaded: function (ph) {
+        ph.register({ app: 'thoshan-chat', version: '2.3.1' });
+      },
+    });
+  })();
+</script>
 </head>
 <body>
 
@@ -422,7 +470,7 @@
       </button>
       <div class="about__row">
         <span class="about__k">Version</span>
-        <span class="about__v">1.15.1 · dormant Turnstile silenced</span>
+        <span class="about__v">2.3.2 · 1-min verify</span>
       </div>
     </div>
   </div>
